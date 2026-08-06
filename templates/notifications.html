@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}通知中心 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>🔔 通知中心</h1>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h2 style="margin-bottom: 0;">智能体主动提醒（共 {{ notes|length }} 条）</h2>
+        {% if notes %}
+        <button type="button" class="btn btn-small" id="read-all-btn">全部标为已读</button>
+        {% endif %}
+    </div>
+
+    {% for n in notes %}
+    <div class="ddl-row {{ '' if not n['read'] else 'ddl-done' }}">
+        <div>
+            {{ n['content'] }}
+            <div class="file-meta">{{ n['created_at'] }}</div>
+        </div>
+        <div class="right">
+            {% if not n['read'] %}<span class="badge badge-urgent">未读</span>{% endif %}
+        </div>
+    </div>
+    {% else %}
+    <p class="empty">还没有通知。智能体会在每天早晨检查当天要交的 DDL 并在这里提醒你。</p>
+    {% endfor %}
+</div>
+{% endblock %}

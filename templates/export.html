@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}导出 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>📤 导出数据</h1>
+
+<div class="card">
+    <h2>选择要导出的内容与格式</h2>
+    <form method="get" action="{{ url_for('export_download') }}" class="search-form">
+        <div class="form-grid">
+            <label>数据类型
+                <select name="data_type">
+                    <option value="ddl">DDL 清单</option>
+                    <option value="review">复习清单</option>
+                    <option value="materials">资料目录</option>
+                </select>
+            </label>
+            <label>格式
+                <select name="fmt">
+                    <option value="ical">iCal 日历（.ics）</option>
+                    <option value="csv">CSV（Excel 可打开）</option>
+                    <option value="markdown">Markdown（.md）</option>
+                </select>
+            </label>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">导出并下载</button>
+        </div>
+    </form>
+
+    <div class="note">
+        <p>💡 <strong>iCal 提醒原理</strong>：导出的 .ics 文件里，每个 DDL 事件都带着
+            「提前 1 天」和「提前 3 小时」两个闹钟。把文件导入手机/电脑的日历 App
+            （iPhone 日历、Google 日历、Outlook、小米/华为日历等），到点日历会自动弹通知——
+            <strong>即使应用没开也能收到提醒</strong>。</p>
+        <p>📋 CSV 用 Excel 打开中文不乱码；Markdown 可用于笔记软件（Obsidian、Typora 等）。</p>
+        <p>⚠️ 资料目录不支持导出 iCal（日历里放不下文件清单），请选 CSV 或 Markdown。</p>
+    </div>
+</div>
+{% endblock %}

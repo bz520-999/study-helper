@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}智能体 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>🤖 学习智能体</h1>
+
+<div class="card chat-card">
+    <div id="chat-box" class="chat-box">
+        <div class="chat-msg agent">
+            你好！我是你的学习智能体 🎓<br>
+            你可以直接问我，比如：<br>
+            · 「这周有什么考试？」<br>
+            · 「高数有哪些资料？」<br>
+            · 「帮我添加一条 DDL：英语作业 8月20日 23:00 截止」<br>
+            · 「为高数期中考试生成复习清单」
+        </div>
+    </div>
+
+    <div class="chat-input-row">
+        <input id="chat-input" placeholder="输入你的问题，回车发送…">
+        <button id="chat-send" class="btn btn-primary">发送</button>
+    </div>
+
+    {% if not agent_ready %}
+    <p class="empty">
+        {% if mock_mode %}
+        ⚠️ 当前为【模拟模式】（还没配置 API Key）。配置后自动切换为真实智能体，去
+        <a href="{{ url_for('settings_page') }}">设置</a> 页填 Key（推荐智谱 GLM-4.7-Flash，完全免费）。
+        {% else %}
+        ⚠️ 还没配置 API Key，去 <a href="{{ url_for('settings_page') }}">设置</a> 页配置后即可使用。
+        {% endif %}
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

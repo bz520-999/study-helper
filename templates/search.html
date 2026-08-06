@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}搜索 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>🔍 资料搜索</h1>
+
+<!-- 搜索条件表单（用 GET：结果可以直接收藏成网址） -->
+<div class="card">
+    <form method="get" action="{{ url_for('search_page') }}" class="search-form">
+        <div class="form-grid">
+            <label>关键词
+                <input name="q" value="{{ keyword }}" placeholder="输入标题、文件名或备注里的字">
+            </label>
+            <label>课程
+                <select name="course_id">
+                    <option value="">全部课程</option>
+                    {% for c in courses %}
+                    <option value="{{ c['id'] }}" {% if selected_course_id == c['id'] %}selected{% endif %}>{{ c['name'] }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>标签
+                <select name="tag">
+                    <option value="">全部标签</option>
+                    {% for t in tags %}
+                    <option value="{{ t['name'] }}" {% if selected_tag == t['name'] %}selected{% endif %}>{{ t['name'] }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">搜索</button>
+        </div>
+    </form>
+</div>
+
+<!-- 搜索结果 -->
+<div class="card">
+    {% if keyword or selected_course_id or selected_tag %}
+    <h2>搜索结果（{{ results|length }} 条）</h2>
+    {% else %}
+    <h2>全部资料（{{ results|length }} 份）</h2>
+    {% endif %}
+
+    {% for m in results %}
+    <div class="material-row">
+        <div>
+            <div class="material-title">
+                {# 命中关键词的地方用黄色高亮（mark 标签） #}
+                {% if keyword and keyword in m['title'] %}
+                    {{ m['title'].replace(keyword, '<mark>' ~ keyword ~ '</mark>') | safe }}
+                {% else %}
+                    {{ m['title'] }}
+                {% endif %}
+            </div>
+            <div class="file-meta">{{ m['file_name'] }} · {{ m['created_at'] }}</div>
+            <div>
+                {% if m['course_name'] %}<span class="tag">{{ m['course_name'] }}</span>{% endif %}
+                {% for t in m['tags'] %}<span class="tag tag-gray">{{ t }}</span>{% endfor %}
+            </div>
+        </div>
+        <div class="right">
+            <a class="btn btn-small" href="{{ url_for('material_download', material_id=m['id']) }}">下载</a>
+        </div>
+    </div>
+    {% else %}
+    <p class="empty">没有找到符合条件的资料，换个关键词试试？</p>
+    {% endfor %}
+</div>
+{% endblock %}

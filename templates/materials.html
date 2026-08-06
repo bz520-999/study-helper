@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}资料库 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>资料库</h1>
+
+<!-- 上传表单 -->
+<div class="card">
+    <h2>📤 上传资料</h2>
+    <form method="post" action="{{ url_for('material_upload') }}" enctype="multipart/form-data" class="upload-form">
+        <div class="form-grid">
+            <label>选择文件 *
+                <input type="file" name="file" required>
+            </label>
+            <label>标题（不填就自动用文件名）
+                <input name="title" placeholder="如：高数第三章课件">
+            </label>
+            <label>课程（可选，可输入新课程名）
+                <input name="course_name" list="course-list" placeholder="选择或输入">
+                <datalist id="course-list">
+                    {% for c in courses %}<option value="{{ c['name'] }}">{% endfor %}
+                </datalist>
+            </label>
+            <label>备注（可选）
+                <input name="notes" placeholder="如：老师上课强调的重点">
+            </label>
+        </div>
+
+        <div>
+            <span class="form-label-text">已有标签（可多选）</span>
+            {% if tags %}
+            <div class="tag-select">
+                {% for t in tags %}
+                <label class="tag-option">
+                    <input type="checkbox" name="tags" value="{{ t['name'] }}"> {{ t['name'] }}
+                </label>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty">还没有标签，可以直接在下面创建</p>
+            {% endif %}
+        </div>
+
+        <label class="checkbox-line">新标签（多个用逗号分开）
+            <input name="new_tags" placeholder="如：作业, 复习">
+        </label>
+
+        <div>
+            <button type="submit" class="btn btn-primary">上传入库</button>
+        </div>
+    </form>
+</div>
+
+<!-- 资料列表 -->
+<div class="card">
+    <h2>全部资料（{{ materials|length }} 份）</h2>
+    {% for m in materials %}
+    <div class="material-row">
+        <div>
+            <div class="material-title">{{ m['title'] }}</div>
+            <div class="file-meta">{{ m['file_name'] }} · {{ m['created_at'] }}</div>
+            <div>
+                {% if m['course_name'] %}<span class="tag">{{ m['course_name'] }}</span>{% endif %}
+                {% for t in m['tags'] %}<span class="tag tag-gray">{{ t }}</span>{% endfor %}
+            </div>
+        </div>
+        <div class="right">
+            <a class="btn btn-small" href="{{ url_for('material_download', material_id=m['id']) }}">下载</a>
+            <a class="btn btn-small btn-danger" href="{{ url_for('material_delete', material_id=m['id']) }}"
+               onclick="return confirm('确定删除这份资料吗？')">删除</a>
+        </div>
+    </div>
+    {% else %}
+    <p class="empty">资料库还是空的，从上面上传第一份资料吧！</p>
+    {% endfor %}
+</div>
+{% endblock %}

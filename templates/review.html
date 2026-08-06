@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}复习清单 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>复习清单</h1>
+
+<!-- 为 DDL 生成复习计划 -->
+<div class="card">
+    <h2>📖 为 DDL 生成复习计划</h2>
+    {% if profile_done %}
+    <p class="empty" style="margin-bottom: 10px">
+        🎯 已按你的学习画像定制：提前 {{ profile_lead }} 天开始、{{ profile_rhythm }}复习一次
+        {% if profile_weak %}、薄弱科目（{{ profile_weak }}）多安排{% endif %}。
+        可在 <a href="{{ url_for('profile_page') }}">画像</a> 页修改后重新生成。
+    </p>
+    {% else %}
+    <p class="empty" style="margin-bottom: 10px">
+        默认规则：考前第 14、7、3、1 天各复习一次；7 天以内每天一次。
+        完成 <a href="{{ url_for('profile_page') }}">学习画像</a> 可获得定制节奏。
+    </p>
+    {% endif %}
+    {% for item in pending %}
+    <div class="ddl-row">
+        <div>
+            <strong>{{ item.task.title }}</strong>
+            {% if item.task.course_name %}<span class="tag">{{ item.task.course_name }}</span>{% endif %}
+            <span class="badge badge-normal">{{ item.label }}</span>
+            {% if counts.get(item.task.id) %}
+            <span class="badge badge-done">已有 {{ counts[item.task.id] }} 条计划</span>
+            {% endif %}
+        </div>
+        <div class="right">
+            <span class="muted">{{ item.task.due_at }}</span>
+            <a class="btn btn-small btn-primary"
+               href="{{ url_for('review_generate', ddl_id=item.task.id) }}">
+                {{ "重新生成" if counts.get(item.task.id) else "生成复习计划" }}
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <p class="empty">没有进行中的 DDL，先去 <a href="{{ url_for('ddl_list') }}">DDL 清单</a> 添加一条吧！</p>
+    {% endfor %}
+</div>
+
+<!-- 我的复习计划 -->
+<div class="card">
+    <h2>我的复习计划</h2>
+    {% for g in grouped %}
+    <div class="plan-group">
+        <div class="plan-group-title">
+            <strong>{{ g.ddl_title }}</strong>
+            {% if g.course_name %}<span class="tag">{{ g.course_name }}</span>{% endif %}
+            <span class="muted">截止：{{ g.ddl_due }}</span>
+            <span class="muted">（{{ g['plans']|length }} 条）</span>
+            <a class="btn btn-small btn-danger" href="{{ url_for('review_clear', ddl_id=g['ddl_id']) }}"
+               onclick="return confirm('确定清空这条任务的复习计划吗？')">清空</a>
+        </div>
+        {% for p in g['plans'] %}
+        <div class="ddl-row {{ 'ddl-done' if p['done'] }}">
+            <div>
+                <span class="plan-date">{{ p['plan_date'] }}</span>
+                {{ p['content'] }}
+            </div>
+            <div class="right">
+                <a class="btn btn-small" href="{{ url_for('review_toggle', plan_id=p['id']) }}">
+                    {{ "标记未完成" if p['done'] else "完成" }}
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">还没有复习计划。选一条 DDL，点击「生成复习计划」。</p>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}学习助手 Pro{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- 顶部导航栏：所有页面共用 -->
+    <nav class="topnav">
+        <div class="brand">📚 学习助手 Pro</div>
+        <a href="{{ url_for('index') }}">首页</a>
+        <a href="{{ url_for('ddl_list') }}">DDL 清单</a>
+        <a href="{{ url_for('materials_list') }}">资料</a>
+        <a href="{{ url_for('search_page') }}">搜索</a>
+        <a href="{{ url_for('review_page') }}">复习</a>
+        <a href="{{ url_for('export_page') }}">导出</a>
+        <a href="{{ url_for('agent_page') }}" class="nav-agent">🤖 智能体</a>
+        <a href="{{ url_for('profile_page') }}">画像</a>
+        <a href="{{ url_for('settings_page') }}">设置</a>
+    </nav>
+
+    <main class="container">
+        <!-- 首次进入引导：完成学习画像 -->
+        {% if not profile_done %}
+        <div class="notify-bar">
+            🎯 花 1 分钟完成「学习画像」，复习方案将为你量身定制
+            <a href="{{ url_for('profile_page') }}">去完成</a>
+        </div>
+        {% endif %}
+
+        <!-- 智能体主动提醒横幅 -->
+        {% if unread_count %}
+        <div class="notify-bar">
+            🔔 智能体有 {{ unread_count }} 条新通知
+            <a href="{{ url_for('notifications_page') }}">查看</a>
+        </div>
+        {% endif %}
+
+        <!-- 显示"已保存！"这类提示消息 -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, msg in messages %}
+                <div class="flash flash-{{ category }}">{{ msg }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <!-- 每个页面自己的内容填在这里 -->
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>
