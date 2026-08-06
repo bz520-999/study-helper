@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}DDL 清单 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>DDL 清单</h1>
+
+<!-- 粘贴文本自动提取 -->
+<div class="card">
+    <h2>📋 粘贴文本自动提取</h2>
+    <p class="empty" style="margin-bottom: 10px">
+        把老师发的通知、群公告粘进来，自动识别截止时间和任务名
+        （支持"高数作业截止于8月20日23:00"、"8月20日前交实验报告"这类说法）。
+    </p>
+    <textarea id="extract-text" rows="3"
+        placeholder="粘贴文字，例如：高数作业截止于8月20日23:00，请大家按时提交。英语考试时间：2026年12月12日"></textarea>
+    <div style="margin-top: 10px">
+        <button type="button" class="btn btn-primary" id="extract-btn">一键提取</button>
+    </div>
+    <div id="extract-result" style="margin-top: 12px"></div>
+</div>
+
+<!-- 新增 DDL 表单 -->
+<div class="card">
+    <h2>➕ 新增 DDL</h2>
+    <form method="post" action="{{ url_for('ddl_add') }}" class="ddl-form">
+        <div class="form-grid">
+            <label>任务名称 *
+                <input name="title" required placeholder="如：高数期中考试">
+            </label>
+            <label>课程（可选）
+                <input name="course_name" placeholder="如：高等数学">
+            </label>
+            <label>截止时间 *
+                <input type="datetime-local" name="due_at" required>
+            </label>
+            <label>备注（可选）
+                <input name="note" placeholder="如：第 3 章之后的内容">
+            </label>
+        </div>
+        <label class="checkbox-line">
+            <input type="checkbox" name="remind_1d" checked> 提前 1 天提醒
+        </label>
+        <label class="checkbox-line">
+            <input type="checkbox" name="remind_3h" checked> 提前 3 小时提醒
+        </label>
+        <div>
+            <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+    </form>
+</div>
+
+<!-- 任务列表 -->
+<div class="card">
+    <h2>任务列表</h2>
+    {% for item in items %}
+    <div class="ddl-row
+        {% if item.task.status == 'done' %}ddl-done
+        {% elif item.overdue %}ddl-overdue
+        {% elif item.urgent %}ddl-urgent{% endif %}">
+        <div>
+            <strong>{{ item.task.title }}</strong>
+            {% if item.task.course_name %}<span class="tag">{{ item.task.course_name }}</span>{% endif %}
+            {% if item.task.status == 'done' %}<span class="badge badge-done">已完成</span>{% endif %}
+        </div>
+        <div class="right">
+            <span class="muted">{{ item.task.due_at }}</span>
+            <span class="badge {{ 'badge-overdue' if item.overdue else 'badge-normal' }}">{{ item.label }}</span>
+            {% if item.task.status != 'done' %}
+            <a class="btn btn-small" href="{{ url_for('ddl_done', task_id=item.task.id) }}">完成</a>
+            {% endif %}
+            <a class="btn btn-small btn-danger" href="{{ url_for('ddl_delete', task_id=item.task.id) }}"
+               onclick="return confirm('确定删除这条 DDL 吗？')">删除</a>
+        </div>
+    </div>
+    {% else %}
+    <p class="empty">还没有 DDL，从上面添加一条吧！</p>
+    {% endfor %}
+</div>
+{% endblock %}

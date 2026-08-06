@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}学习画像 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>🎯 学习画像</h1>
+
+<div class="card">
+    <h2>{% if profile_done %}我的学习画像（可随时修改）{% else %}完成学习画像，获得定制复习方案{% endif %}</h2>
+    <p class="empty" style="margin-bottom: 12px">
+        这些信息只保存在你自己电脑里。完成后，<strong>复习清单的生成规则会按你的习惯量身定制</strong>：
+        提前几天开始、多久复习一次、薄弱科目多安排几次。不填写则使用默认规则。
+    </p>
+
+    <form id="profile-form" class="upload-form">
+        <div class="form-grid">
+            <label>昵称（可选）
+                <input name="nickname" value="{{ profile['nickname'] }}" placeholder="如：小陈">
+            </label>
+            <label>每天可投入复习时间
+                <select name="hours">
+                    {% for h in ["0.5", "1", "2", "3", "4"] %}
+                    <option value="{{ h }}" {% if profile['hours'] == h %}selected{% endif %}>
+                        {{ h if h != '0.5' else '0.5' }} 小时
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>提前几天开始复习
+                <select name="lead_days">
+                    {% for d in ["7", "14", "30", "60"] %}
+                    <option value="{{ d }}" {% if profile['lead_days'] == d %}selected{% endif %}>提前 {{ d }} 天</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>复习节奏
+                <select name="rhythm">
+                    <option value="每天" {% if profile['rhythm'] == '每天' %}selected{% endif %}>每天一次（高强度）</option>
+                    <option value="隔天" {% if profile['rhythm'] == '隔天' %}selected{% endif %}>隔天一次（轻松）</option>
+                </select>
+            </label>
+            <label>薄弱科目（选填，逗号分隔，会多安排复习）
+                <input name="weak" list="course-list" value="{{ profile['weak'] }}"
+                       placeholder="如：高等数学, 大物">
+                <datalist id="course-list">
+                    {% for c in courses %}<option value="{{ c['name'] }}">{% endfor %}
+                </datalist>
+            </label>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">保存画像</button>
+            <span id="profile-msg" class="muted"></span>
+            {% if profile_done %}
+            <button type="button" class="btn btn-small btn-danger" id="profile-clear-btn"
+                    style="float: right;">清除画像（重新调查）</button>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}

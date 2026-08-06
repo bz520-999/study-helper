@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}首页 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>今日概览</h1>
+
+<!-- 需要马上处理：已过期 + 24小时内到期，红色/橙色醒目展示 -->
+{% if overdue or urgent %}
+<section class="card alert-card">
+    <h2>⏰ 需要马上处理</h2>
+
+    {% for item in overdue %}
+    <div class="ddl-row ddl-overdue">
+        <div>
+            <strong>{{ item.task.title }}</strong>
+            {% if item.task.course_name %}<span class="tag">{{ item.task.course_name }}</span>{% endif %}
+        </div>
+        <div class="right">
+            <span class="muted">{{ item.task.due_at }}</span>
+            <span class="badge badge-overdue">已过期</span>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% for item in urgent %}
+    <div class="ddl-row ddl-urgent">
+        <div>
+            <strong>{{ item.task.title }}</strong>
+            {% if item.task.course_name %}<span class="tag">{{ item.task.course_name }}</span>{% endif %}
+        </div>
+        <div class="right">
+            <span class="muted">{{ item.task.due_at }}</span>
+            <span class="badge badge-urgent">{{ item.label }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</section>
+{% endif %}
+
+<!-- 其他进行中的任务 -->
+<section class="card">
+    <h2>📅 进行中的任务（共 {{ pending_count }} 项）</h2>
+    {% for item in upcoming %}
+    <div class="ddl-row">
+        <div>
+            <strong>{{ item.task.title }}</strong>
+            {% if item.task.course_name %}<span class="tag">{{ item.task.course_name }}</span>{% endif %}
+        </div>
+        <div class="right">
+            <span class="muted">{{ item.task.due_at }}</span>
+            <span class="badge badge-normal">{{ item.label }}</span>
+        </div>
+    </div>
+    {% else %}
+    <p class="empty">暂时没有进行中的任务，去 <a href="{{ url_for('ddl_list') }}">DDL 清单</a> 添加一条吧！</p>
+    {% endfor %}
+</section>
+{% endblock %}
