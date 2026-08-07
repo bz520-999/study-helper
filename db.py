@@ -115,7 +115,37 @@ def init_db():
         key TEXT PRIMARY KEY,
         value TEXT
     );
+
+    -- 课程安排表（教务课表同步进来，2026-08-07 新增）
+    CREATE TABLE IF NOT EXISTS course_schedule (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id INTEGER,                 -- 关联的课程 id
+        course_name TEXT NOT NULL,         -- 课程名（冗余存一份，避免关联不到）
+        teacher TEXT,                      -- 老师
+        day TEXT,                          -- 星期（星期一~星期日）
+        slot TEXT,                         -- 大节（第一大节~第五大节/网课）
+        weeks TEXT,                        -- 周次（如 "4-5,7-18(周)"）
+        sections TEXT,                     -- 精确小节（如 "04-05"）
+        location TEXT,                     -- 教室
+        term TEXT,                         -- 学期（如 2026-2027-1）
+        source TEXT NOT NULL DEFAULT 'crawler',
+        created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_schedule_course ON course_schedule(course_id);
     """)
+    # ---- 表结构迁移（老版本表的字段升级，2026-08-07）----
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(course_schedule)")}
+        if "time_info" in cols and "day" not in cols:
+            # 老结构(teacher/time_info/location) → 新结构(day/slot/weeks)
+            conn.execute("ALTER TABLE course_schedule ADD COLUMN day TEXT")
+            conn.execute("ALTER TABLE course_schedule ADD COLUMN slot TEXT")
+            conn.execute("ALTER TABLE course_schedule ADD COLUMN weeks TEXT")
+            conn.execute("UPDATE course_schedule SET day='', slot='', weeks=''")
+        if "sections" not in cols:
+            conn.execute("ALTER TABLE course_schedule ADD COLUMN sections TEXT")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 

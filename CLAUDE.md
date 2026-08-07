@@ -46,6 +46,7 @@ study-helper/
 - 代码注释用中文、通俗，服务零基础用户
 - **run.bat / build_exe.bat / 停止学习助手.bat 必须保持纯 ASCII（不能含中文）**：中文 Windows 的 cmd 用 GBK 解析 .bat 文件，UTF-8 中文会碎裂成乱码命令导致启动失败（2026-08-06 踩坑）
 - 运行方式：双击 run.bat，浏览器打开 http://127.0.0.1:5000
+- **run.bat 启动时会先自动杀掉所有旧实例（2026-08-07 新增）**：保证每次启动跑的一定是最新代码、且只有一个实例，避免旧进程占着端口导致"改了代码不生效"。杀旧命令与「停止学习助手.bat」一致（匹配 StudyHelper*/python.exe *app.py*）
 - **exe 打包（2026-08-06）**：config.py 里 `BASE_DIR`/`DATA_DIR` 已按 frozen 模式切换（exe 版数据存 exe 旁边 data/）；app.py 有 `resource_path()`（模板/静态文件读打包内部）、frozen 时 stdout 重定向到 data/run.log、启动失败弹 MessageBox；**必须用 venv 的 python 打包**（`venv/Scripts/python.exe -m PyInstaller ...`，系统 python 没装依赖）；安装器用 `--add-data "dist/StudyHelper;app"` 内含主程序，复制时跳过 data/ 保护用户数据；安装器 docstring 里**不能出现反斜杠路径**（\U 会被 Python 当 unicode 转义）
 
 ## 进度

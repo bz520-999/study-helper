@@ -55,4 +55,271 @@
     <p class="empty">暂时没有进行中的任务，去 <a href="{{ url_for('ddl_list') }}">DDL 清单</a> 添加一条吧！</p>
     {% endfor %}
 </section>
+
+<!-- 我的课表（教务同步，可视化周课表） -->
+<section class="card">
+    <h2>🗓️ 我的课表</h2>
+
+    {% if schedule %}
+    <div class="schedule-toolbar">
+        <button type="button" class="btn btn-small" id="sched-prev">◀ 上一周</button>
+        <span class="muted" id="sched-week-label">第 1 周</span>
+        <button type="button" class="btn btn-small" id="sched-next">下一周 ▶</button>
+        <button type="button" class="btn btn-small" id="sched-today">回到本周</button>
+    </div>
+
+    <div class="schedule-wrap">
+        <table class="schedule-grid" id="schedule-grid">
+            <thead>
+                <tr>
+                    <th class="sched-time-col">节次</th>
+                    <th>星期一</th><th>星期二</th><th>星期三</th>
+                    <th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th>
+                </tr>
+            </thead>
+            <tbody id="schedule-body">
+                <!-- 由 JS 动态渲染 -->
+            </tbody>
+        </table>
+    </div>
+    <p class="muted" id="sched-legend" style="margin-top:8px"></p>
+
+    <script>
+    // 南理工作息：14 小节，每节时间（分钟）
+    var SECTIONS = [
+        {n: 1, t: "08:00"}, {n: 2, t: "08:50"}, {n: 3, t: "09:40"},
+        {n: 4, t: "10:40"}, {n: 5, t: "11:30"},
+        {n: 6, t: "14:00"}, {n: 7, t: "14:50"},
+        {n: 8, t: "15:50"}, {n: 9, t: "16:40"}, {n: 10, t: "17:30"},
+        {n: 11, t: "19:00"}, {n: 12, t: "19:50"}, {n: 13, t: "20:40"},
+        {n: 14, t: "网课"}
+    ];
+    // 每小节的开始时间（分钟），用于左侧标注
+    var SECTION_MIN = {1:480, 2:530, 3:580, 4:640, 5:690, 6:840, 7:890, 8:950, 9:1000, 10:1050, 11:1140, 12:1190, 13:1240, 14:1290};
+
+    var rawSchedule = {{ schedule_json | safe }};
+    var rawExams = {{ exam_json | safe }};
+    var semesterStart = "{{ semester_start }}";   // 学期第1周周一，用于考试日期→周次换算
+    var DAYS = ["星期一","星期二","星期三","星期四","星期五","星期六","星期日"];
+
+    // 课程颜色分配（每门课一个颜色）
+    var PALETTE = ["#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6","#1abc9c",
+                   "#e67e22","#16a085","#8e44ad","#c0392b","#2980b9","#27ae60",
+                   "#f1c40f","#e84393","#00b894","#6c5ce7"];
+    var courseColors = {};
+    var ci = 0;
+    function colorFor(course) {
+        if (!courseColors[course]) {
+            courseColors[course] = PALETTE[ci % PALETTE.length];
+            ci++;
+        }
+        return courseColors[course];
+    }
+
+    // 解析周次 "5-6,8-16(周)" → 集合
+    function parseWeeks(str) {
+        var set = new Set();
+        if (!str) return set;
+        str = str.replace(/[()周单双]/g, " ").trim();
+        var parts = str.split(/[,，]/);
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i].trim();
+            if (!p) continue;
+            var m = p.match(/^(\d+)(?:-(\d+))?$/);
+            if (m) {
+                var s = parseInt(m[1]), e = m[2] ? parseInt(m[2]) : s;
+                for (var w = s; w <= e; w++) set.add(w);
+            }
+        }
+        return set;
+    }
+
+    // 解析精确小节 "04-05" → [start, end]
+    function parseSections(str) {
+        var m = (str||"").match(/^(\d{1,2})-(\d{1,2})$/);
+        if (m) return [parseInt(m[1]), parseInt(m[2])];
+        return null;
+    }
+
+    // 考试：日期 → (周次, 星期索引)
+    function examDateInfo(dueAt) {
+        // dueAt 形如 "2026-12-20 09:30"
+        var m = (dueAt||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return null;
+        var d = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]));
+        // 学期起始（第1周周一）
+        var ss = (semesterStart||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!ss) return null;
+        var s = new Date(parseInt(ss[1]), parseInt(ss[2])-1, parseInt(ss[3]));
+        var diffDays = Math.floor((d - s) / 86400000);
+        if (diffDays < 0) return null;
+        var week = Math.floor(diffDays / 7) + 1;
+        var dayIdx = d.getDay();          // 0=周日
+        dayIdx = (dayIdx === 0) ? 6 : dayIdx - 1;   // 0=周一
+        return {week: week, dayIdx: dayIdx};
+    }
+    // 考试：时间 → 小节（按最近的小节开始时间定位）
+    function examTimeSection(timeStr) {
+        var m = (timeStr||"").match(/(\d{1,2}):(\d{2})/);
+        if (!m) return 14;   // 默认放网课行
+        var minutes = parseInt(m[1]) * 60 + parseInt(m[2]);
+        var best = 1, bestDiff = 1e9;
+        for (var sec = 1; sec <= 14; sec++) {
+            var sm = SECTION_MIN[sec];
+            if (sm !== undefined) {
+                var diff = Math.abs(minutes - sm);
+                if (diff < bestDiff) { bestDiff = diff; best = sec; }
+            }
+        }
+        return best;
+    }
+
+    // 渲染
+    var curWeek = 1;
+    var maxWeek = 20;
+    function renderSchedule() {
+        var body = document.getElementById("schedule-body");
+        var html = "";
+        // 预计算：当前周该显示哪些课（按 星期×小节 定位）
+        var cells = {};   // key: dayIdx*100 + section → [courseObjs]
+        for (var i = 0; i < rawSchedule.length; i++) {
+            var c = rawSchedule[i];
+            var dayIdx = DAYS.indexOf(c.day);
+            if (dayIdx < 0) continue;
+            var secs = parseSections(c.sections);
+            if (!secs) {
+                // 无精确小节：用大节映射（兜底）
+                secs = bigSectionToSections(c.slot);
+                if (!secs) continue;
+            }
+            var weeksSet = parseWeeks(c.weeks);
+            if (weeksSet.size > 0 && !weeksSet.has(curWeek)) continue;   // 周次过滤
+            var sStart = secs[0], sEnd = secs[1];
+            var keyBase = dayIdx * 100;
+            for (var s = sStart; s <= sEnd; s++) {
+                if (!cells[keyBase + s]) cells[keyBase + s] = [];
+                cells[keyBase + s].push(c);
+            }
+        }
+
+        // 考试叠加：当前周 + 对应星期×小节
+        var examCells = {};   // key: dayIdx*100+section → [exam]
+        for (var ei = 0; ei < rawExams.length; ei++) {
+            var ex = rawExams[ei];
+            var dinfo = examDateInfo(ex.due_at);
+            if (!dinfo || dinfo.week !== curWeek) continue;   // 只在考试那周显示
+            var sec = examTimeSection(ex.due_at);
+            var ekey = dinfo.dayIdx * 100 + sec;
+            if (!examCells[ekey]) examCells[ekey] = [];
+            examCells[ekey].push(ex);
+        }
+
+        // 大节分组信息（左侧标注）：每行标注该节时间
+        // 行 = 1~14 小节
+        // 课程块：用 td rowspan 跨小节（起始节的 td 带 rowspan，后续小节跳过该列）
+        // 预计算每列的课程块映射: key = d*100+startSec → {course, span}
+        var courseBlockAt = {};
+        for (var bi = 0; bi < rawSchedule.length; bi++) {
+            var cc = rawSchedule[bi];
+            var dIdx = DAYS.indexOf(cc.day);
+            if (dIdx < 0) continue;
+            var csecs = parseSections(cc.sections) || bigSectionToSections(cc.slot);
+            if (!csecs) continue;
+            var cwk = parseWeeks(cc.weeks);
+            if (cwk.size > 0 && !cwk.has(curWeek)) continue;
+            var ckey = dIdx * 100 + csecs[0];
+            if (!courseBlockAt[ckey]) {
+                courseBlockAt[ckey] = {course: cc, span: csecs[1] - csecs[0] + 1};
+            }
+        }
+        // 记录已被 rowspan 覆盖的格子
+        var covered = {};
+
+        for (var sec = 1; sec <= 14; sec++) {
+            var isOnline = (sec === 14);
+            html += '<tr class="' + (isOnline ? 'sched-online-row' : '') + '">';
+            // 左侧：节次 + 时间
+            var secInfo = SECTIONS[sec-1];
+            html += '<td class="sched-time-col">第' + sec + '节<br><span class="sched-time">' + secInfo.t + '</span></td>';
+            // 7 天
+            for (var d = 0; d < 7; d++) {
+                var cellExams = examCells[d*100 + sec];
+                var blockKey = d*100 + sec;
+                if (covered[blockKey]) {
+                    // 已被上一行 rowspan 覆盖，本行不输出该列
+                    continue;
+                }
+                html += '<td class="sched-cell"';
+                var block = courseBlockAt[blockKey];
+                if (block && block.span > 1) {
+                    html += ' rowspan="' + block.span + '"';
+                    for (var sp2 = sec + 1; sp2 <= sec + block.span - 1; sp2++) {
+                        covered[d*100 + sp2] = true;
+                    }
+                }
+                html += '>';
+                if (block) {
+                    var course = block.course;
+                    var color = colorFor(course.name);
+                    html += '<div class="sched-course" style="background:' + color + '" title="' +
+                        course.name + '｜' + course.teacher + '｜' + course.location + '">' +
+                        '<div class="sched-course-name">' + course.name + '</div>' +
+                        '<div class="sched-course-loc">' + course.location + '</div>' +
+                        '</div>';
+                }
+                // 考试叠加（红色块，显示在课程块之上/旁边）
+                if (cellExams && cellExams.length) {
+                    for (var exi = 0; exi < cellExams.length; exi++) {
+                        var exam = cellExams[exi];
+                        var tM = (exam.due_at||"").match(/(\d{1,2}):(\d{2})/);
+                        var tStr = tM ? (tM[1] + ":" + tM[2]) : "";
+                        html += '<div class="sched-exam" title="考试：' + exam.title +
+                            (exam.location ? '｜' + exam.location : '') + '">' +
+                            '<span class="sched-exam-label">考试</span> ' +
+                            '<span class="sched-exam-title">' + exam.title + '</span>' +
+                            (tStr ? ' <span class="sched-exam-time">' + tStr + '</span>' : '') +
+                            '</div>';
+                    }
+                }
+                html += '</td>';
+            }
+            html += '</tr>';
+        }
+        body.innerHTML = html;
+        document.getElementById("sched-week-label").textContent = "第 " + curWeek + " 周";
+    }
+
+    // 大节 → 小节范围
+    function bigSectionToSections(slot) {
+        if (slot.indexOf("第一大节") >= 0) return [1, 3];
+        if (slot.indexOf("第二大节") >= 0) return [4, 5];
+        if (slot.indexOf("第三大节") >= 0) return [6, 7];
+        if (slot.indexOf("第四大节") >= 0) return [8, 10];
+        if (slot.indexOf("第五大节") >= 0) return [11, 13];
+        if (slot.indexOf("网课") >= 0) return [14, 14];
+        return null;
+    }
+    function secsFor(course) {
+        return parseSections(course.sections) || bigSectionToSections(course.slot);
+    }
+
+    // 翻周按钮
+    document.getElementById("sched-prev").addEventListener("click", function () {
+        if (curWeek > 1) { curWeek--; renderSchedule(); }
+    });
+    document.getElementById("sched-next").addEventListener("click", function () {
+        if (curWeek < maxWeek) { curWeek++; renderSchedule(); }
+    });
+    document.getElementById("sched-today").addEventListener("click", function () {
+        // 计算当前是第几周（从学期第1周估算，简化：默认第1周）
+        curWeek = 1;
+        renderSchedule();
+    });
+
+    renderSchedule();
+    </script>
+    {% else %}
+    <p class="empty">还没有课表数据。去 <a href="{{ url_for('settings_page') }}">设置</a> 页同步教务系统即可自动导入。</p>
+    {% endif %}
+</section>
 {% endblock %}
