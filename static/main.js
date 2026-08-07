@@ -176,6 +176,25 @@ if (profileClearBtn) {
 // ============================================
 var crawlerForm = document.getElementById("crawler-form");
 if (crawlerForm) {
+    // 切换同步来源时，联动账号输入框的提示文字
+    var providerSelect = crawlerForm.querySelector("select[name='crawl_provider']");
+    var userLabel = document.getElementById("crawl-user-label");
+    if (providerSelect && userLabel) {
+        function syncCrawlerUi() {
+            var isJwxt = providerSelect.value === "jwxt";
+            userLabel.childNodes[0].textContent = isJwxt ? "教务系统账号（学号）" : "学习通账号（手机号）";
+            var input = userLabel.querySelector("input[name='crawl_username']");
+            if (input) input.placeholder = isJwxt ? "填学号" : "填手机号";
+            var pasteNote = document.getElementById("crawl-paste-note");
+            if (pasteNote) {
+                pasteNote.innerHTML = isJwxt
+                    ? "1. 浏览器登录教务系统 → 打开「考试安排 / 成绩」页 → 全选复制文字<br>2. 粘贴到下面 → 点「提取」→ 勾选确认后自动进入 DDL 清单"
+                    : "1. 用浏览器登录学习通 → 打开「作业」列表页 → 全选复制文字<br>2. 粘贴到下面 → 点「提取」→ 勾选确认后自动进入 DDL 清单";
+            }
+        }
+        providerSelect.addEventListener("change", syncCrawlerUi);
+        syncCrawlerUi();
+    }
     crawlerForm.addEventListener("submit", function (e) {
         e.preventDefault();
         var msg = document.getElementById("crawl-msg");
@@ -200,8 +219,112 @@ if (crawlSyncBtn) {
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 msg.textContent = data.msg || "已开始同步";
-                setTimeout(function () { location.reload(); }, 2500);  // 稍后刷新看日志
+                // 同步在后台跑，这里开始轮询"有没有要人工输入的验证码"
+                checkCrawlerCaptcha(msg);
             });
+    });
+}
+
+// 退出登录：清除账号密码 + 课表，回到初始状态
+var logoutBtn = document.getElementById("crawler-logout-btn");
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", function () {
+        var msg = document.getElementById("crawler-logout-msg");
+        if (!confirm("确定要退出登录吗？\n将清除教务/学习通账号密码，并清空已同步的课表数据。")) {
+            return;
+        }
+        msg.textContent = "正在退出…";
+        fetch("/api/crawler/logout", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                msg.textContent = data.ok ? "✅ " + data.msg : "退出失败";
+                setTimeout(function () { location.reload(); }, 1200);   // 刷新回到初始状态
+            });
+    });
+}
+
+// 同步完成后刷新页面时，若上次同步失败且提示了"校园网/验证码/半自动"，
+// 自动滚动到半自动粘贴区并高亮提示（引导用户用最稳妥的方式）
+var crawlLogsBox = document.getElementById("crawl-logs");
+if (crawlLogsBox) {
+    var latest = crawlLogsBox.getAttribute("data-latest");
+    var latestStatus = crawlLogsBox.getAttribute("data-latest-status");
+    if (latestStatus === "failed") {
+        var needPaste = /校园网|VPN|验证码|半自动|认证服务器连不上|结构可能已变化/.test(latest);
+        if (needPaste) {
+            var pasteCard = document.getElementById("crawl-paste-result");
+            var hint = document.getElementById("crawl-paste-note");
+            if (pasteCard) {
+                pasteCard.innerHTML =
+                    '<div class="note" style="margin-top:8px;border-color:#f0c040;background:#fffbea">' +
+                    '<p><strong>全自动同步没成功</strong>，请用下面的「半自动同步」：</p>' +
+                    '<p style="margin:6px 0 4px">① 浏览器打开教务系统，登录后进入「考试安排 / 作业」页</p>' +
+                    '<p style="margin:4px 0">② 按 Ctrl+A 全选 → Ctrl+C 复制整页文字</p>' +
+                    '<p style="margin:4px 0 6px">③ 粘贴到下方输入框 → 点「提取 DDL」→ 勾选确认导入</p>' +
+                    '</div>';
+                if (hint) {
+                    pasteCard.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+            }
+        }
+    }
+}
+
+// 轮询验证码：同步过程中若遇到需要人工输入，弹出验证码图让用户看
+var captchaPollTimer = null;
+function checkCrawlerCaptcha(msg) {
+    if (captchaPollTimer) clearTimeout(captchaPollTimer);
+    fetch("/api/crawler/captcha/status")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.status === "waiting" && data.image_base64) {
+                showCaptchaDialog(data.image_base64, msg);
+                return;   // 显示后不再轮询，等用户提交
+            }
+            if (data.status === "idle") {
+                // 没有待输入的验证码，但同步可能还在跑：短暂后再查
+                captchaPollTimer = setTimeout(function () {
+                    checkCrawlerCaptcha(msg);
+                }, 1500);
+            }
+            // submitted/timeout：验证码环节已结束，交给上面的 2500ms 刷新兜底
+        })
+        .catch(function () { });
+}
+
+function showCaptchaDialog(imageBase64, msg) {
+    if (captchaPollTimer) clearTimeout(captchaPollTimer);
+    var box = document.getElementById("crawl-paste-result");   // 复用页面上已有的结果区
+    box.innerHTML =
+        '<div class="note" style="margin-top:6px">' +
+        '<p><strong>请输入验证码</strong>（图片如下，看不清可点「重新同步」）</p>' +
+        '<img src="data:image/png;base64,' + imageBase64 + '" alt="验证码" ' +
+        'style="border:1px solid #ccc;border-radius:4px;max-height:64px;display:block;margin:8px 0">' +
+        '<input type="text" id="captcha-answer" placeholder="输入图中的字符" ' +
+        'autocomplete="off" style="width:160px"> ' +
+        '<button type="button" class="btn btn-primary" id="captcha-submit-btn">提交验证码</button>' +
+        '</div>';
+    var answerInput = document.getElementById("captcha-answer");
+    answerInput.focus();
+    function submitCaptcha() {
+        var answer = answerInput.value.trim();
+        if (!answer) { alert("请先输入验证码"); return; }
+        fetch("/api/crawler/captcha/submit", {
+            method: "POST",
+            body: new URLSearchParams({ answer: answer }),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                box.innerHTML = '<p class="empty">' + (data.ok ? "已提交，等待登录完成…" : ("提交失败：" + data.msg)) + '</p>';
+                if (data.ok) {
+                    // 提交后同步线程继续，稍后刷新看结果
+                    captchaPollTimer = setTimeout(function () { location.reload(); }, 3500);
+                }
+            });
+    }
+    document.getElementById("captcha-submit-btn").addEventListener("click", submitCaptcha);
+    answerInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submitCaptcha();
     });
 }
 

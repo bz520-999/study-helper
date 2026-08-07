@@ -77,12 +77,43 @@ def index():
     overdue = [i for i in items if i["overdue"]]
     urgent = [i for i in items if (not i["overdue"]) and i["urgent"]]
     upcoming = [i for i in items if (not i["overdue"]) and (not i["urgent"])]
+    schedule_rows = models.list_course_schedule()
+    schedule_json = json.dumps([
+        {
+            "name": s["course_name"],
+            "teacher": s["teacher"] or "",
+            "day": s["day"] or "",
+            "slot": s["slot"] or "",
+            "weeks": s["weeks"] or "",
+            "sections": s["sections"] or "",
+            "location": s["location"] or "",
+        }
+        for s in schedule_rows
+    ], ensure_ascii=False)
+
+    # 考试数据（pending DDL 里含"考试"的），叠加到课表
+    exam_json = json.dumps([
+        {
+            "title": t["title"],
+            "due_at": t["due_at"],
+            "course": t["course_name"] or "",
+            "location": t["note"] or "",
+        }
+        for t in tasks
+        if "考试" in (t["title"] or "")
+    ], ensure_ascii=False)
+
     return render_template(
         "index.html",
         overdue=overdue,
         urgent=urgent,
         upcoming=upcoming,
         pending_count=len(items),
+        schedule=schedule_rows,
+        schedule_count=models.count_course_schedule(),
+        schedule_json=schedule_json,
+        exam_json=exam_json,
+        semester_start=models.get_setting("semester_start") or "2026-09-07",
     )
 
 
@@ -417,6 +448,7 @@ def settings_page():
         check_hour=models.get_setting("agent_check_hour") or str(config.AGENT_CHECK_HOUR),
         # 爬虫相关
         crawler_enabled=models.get_setting("crawl_enabled") == "1",
+        crawl_provider=models.get_setting("crawl_provider") or "chaoxing",
         crawl_username=models.get_setting("crawl_username"),
         crawl_password_set=bool(models.get_setting("crawl_password")),
         crawl_logs=models.list_crawl_logs(),
@@ -438,11 +470,15 @@ def backup_now():
 
 @app.route("/api/crawler/save", methods=["POST"])
 def crawler_save():
-    """保存爬虫账号（密码加密存储）和开关"""
+    """保存爬虫账号（密码加密存储）、来源和开关"""
     username = request.form.get("crawl_username", "").strip()
     password = request.form.get("crawl_password", "")
-    enabled = request.form.get("crawl_enabled") == "1"
+    enabled = request.form.get("crawl_enabled") in ("1", "on", "true", "True")
+    provider = request.form.get("crawl_provider", "").strip()
 
+    # 记录来源：学习通 / 教务系统（没传则沿用当前值）
+    if provider:
+        models.set_setting("crawl_provider", provider)
     if username:
         models.set_setting("crawl_username", username)
     if password:
@@ -460,6 +496,30 @@ def crawler_sync():
         return {"ok": True, "msg": "爬虫开关未开启，已跳过。"}
     msg = crawler.run_sync()
     return {"ok": True, "msg": msg}
+
+
+@app.route("/api/crawler/captcha/status", methods=["GET"])
+def crawler_captcha_status():
+    """设置页轮询：有没有待输入的验证码、图片是什么（base64）"""
+    return crawler.captcha.captcha_status()
+
+
+@app.route("/api/crawler/captcha/submit", methods=["POST"])
+def crawler_captcha_submit():
+    """设置页提交用户肉眼输入的验证码"""
+    answer = request.form.get("answer", "")
+    return crawler.captcha.captcha_submit(answer)
+
+
+@app.route("/api/crawler/logout", methods=["POST"])
+def crawler_logout():
+    """退出登录：清除教务/学习通账号密码、关闭开关、清空已同步的课表。"""
+    models.set_setting("crawl_username", "")
+    models.set_setting("crawl_password", "")
+    models.set_setting("crawl_enabled", "0")
+    models.clear_course_schedule()
+    models.add_crawl_log("logout", "success", "已退出登录，账号信息已清除。")
+    return {"ok": True, "msg": "已退出登录，账号和课表已清除。"}
 
 
 @app.route("/api/crawler/paste", methods=["POST"])

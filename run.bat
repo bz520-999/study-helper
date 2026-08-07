@@ -2,6 +2,9 @@
 chcp 65001 >nul
 cd /d %~dp0
 
+rem ==== Always run the latest code: stop any existing instance first ====
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -like 'StudyHelper*') -or ($_.Name -eq 'python.exe' -and $_.CommandLine -like '*app.py*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+
 rem ==== Check Python ====
 where python >nul 2>&1
 if errorlevel 1 (
