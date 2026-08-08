@@ -66,7 +66,10 @@
             <span class="muted">{{ item.task.due_at }}</span>
             <span class="badge {{ 'badge-overdue' if item.overdue else 'badge-normal' }}">{{ item.label }}</span>
             {% if item.task.status != 'done' %}
+            <button class="btn btn-small btn-edit" data-id="{{ item.task.id }}">编辑</button>
             <a class="btn btn-small" href="{{ url_for('ddl_done', task_id=item.task.id) }}">完成</a>
+            {% else %}
+            <button class="btn btn-small btn-edit" data-id="{{ item.task.id }}">编辑</button>
             {% endif %}
             <a class="btn btn-small btn-danger" href="{{ url_for('ddl_delete', task_id=item.task.id) }}"
                onclick="return confirm('确定删除这条 DDL 吗？')">删除</a>
@@ -76,4 +79,115 @@
     <p class="empty">还没有 DDL，从上面添加一条吧！</p>
     {% endfor %}
 </div>
+
+<!-- 编辑弹窗（默认隐藏） -->
+<div class="modal-overlay" id="edit-modal">
+    <div class="modal-box">
+        <h2>✏️ 编辑 DDL</h2>
+        <form id="edit-form" class="ddl-form">
+            <input type="hidden" id="edit-id">
+            <div class="form-grid">
+                <label>任务名称 *
+                    <input name="title" id="edit-title" required placeholder="如：高数期中考试">
+                </label>
+                <label>课程（可选）
+                    <input name="course_name" id="edit-course" placeholder="如：高等数学">
+                </label>
+                <label>截止时间 *
+                    <input type="datetime-local" name="due_at" id="edit-due" required>
+                </label>
+                <label>备注（可选）
+                    <input name="note" id="edit-note" placeholder="如：第 3 章之后的内容">
+                </label>
+            </div>
+            <label class="checkbox-line">
+                <input type="checkbox" name="remind_1d" id="edit-remind-1d" checked> 提前 1 天提醒
+            </label>
+            <label class="checkbox-line">
+                <input type="checkbox" name="remind_3h" id="edit-remind-3h" checked> 提前 3 小时提醒
+            </label>
+            <div class="modal-actions">
+                <span id="edit-msg" class="muted" style="flex:1"></span>
+                <button type="button" class="btn" id="edit-cancel">取消</button>
+                <button type="submit" class="btn btn-primary">保存修改</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// ========== 编辑 DDL 弹窗逻辑 ==========
+var modal = document.getElementById('edit-modal');
+var editMsg = document.getElementById('edit-msg');
+
+// 点击「编辑」按钮 → 拉取数据 → 填入弹窗 → 显示
+document.querySelectorAll('.btn-edit').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var taskId = this.getAttribute('data-id');
+        editMsg.textContent = '';
+        // 显示弹窗
+        modal.classList.add('active');
+        document.getElementById('edit-id').value = taskId;
+
+        fetch('/api/ddl/' + taskId)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) { editMsg.textContent = d.error; return; }
+                document.getElementById('edit-title').value = d.title;
+                document.getElementById('edit-course').value = d.course_name;
+                // datetime-local 需要 "YYYY-MM-DDTHH:MM" 格式
+                document.getElementById('edit-due').value = d.due_at.replace(' ', 'T');
+                document.getElementById('edit-note').value = d.note;
+                document.getElementById('edit-remind-1d').checked = d.remind_1d;
+                document.getElementById('edit-remind-3h').checked = d.remind_3h;
+            })
+            .catch(function(e) {
+                editMsg.textContent = '加载失败：' + e.message;
+            });
+    });
+});
+
+// 关闭弹窗
+function closeModal() {
+    modal.classList.remove('active');
+}
+document.getElementById('edit-cancel').addEventListener('click', closeModal);
+// 点遮罩层关闭
+modal.addEventListener('click', function(e) {
+    if (e.target === modal) closeModal();
+});
+
+// 提交编辑
+document.getElementById('edit-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var taskId = document.getElementById('edit-id').value;
+    var formData = new FormData(this);
+    editMsg.textContent = '保存中...';
+
+    fetch('/ddl/' + taskId + '/edit', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) {
+            editMsg.textContent = '已保存，刷新中...';
+            setTimeout(function() { location.reload(); }, 400);
+        } else {
+            editMsg.textContent = d.error || '保存失败';
+        }
+    })
+    .catch(function(e) {
+        editMsg.textContent = '网络错误：' + e.message;
+    });
+});
+
+// 按 ESC 关闭弹窗
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && modal.classList.contains('active')) {
+        closeModal();
+    }
+});
+</script>
+
 {% endblock %}
