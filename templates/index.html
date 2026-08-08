@@ -4,6 +4,23 @@
 {% block content %}
 <h1>今日概览</h1>
 
+<!-- 今天截止提醒：右下角 Toast + 浏览器通知（showToast 在 main.js 里定义，DOMContentLoaded 时已加载） -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var todayCount = {{ today_count }};
+    if (todayCount > 0) {
+        // 通知权限已开 → 直接发一条浏览器通知；没问过 → Toast 里带"开启通知"按钮
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("学习助手 Pro", { body: "今天有 " + todayCount + " 项 DDL 截止，抓紧啦！" });
+        } else if ("Notification" in window && Notification.permission === "default") {
+            showToast("⏰ 今天有 " + todayCount + " 项 DDL 截止！", "warn", "🔔 开启浏览器通知", enableNotifications);
+        } else {
+            showToast("⏰ 今天有 " + todayCount + " 项 DDL 截止！", "warn");
+        }
+    }
+});
+</script>
+
 <!-- 需要马上处理：已过期 + 24小时内到期，红色/橙色醒目展示 -->
 {% if overdue or urgent %}
 <section class="card alert-card">

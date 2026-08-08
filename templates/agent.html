@@ -6,7 +6,7 @@
 
 <div class="card chat-card">
     <div id="chat-box" class="chat-box">
-        <div class="chat-msg agent">
+        <div id="chat-welcome" class="chat-msg agent">
             你好！我是你的学习智能体 🎓<br>
             你可以直接问我，比如：<br>
             · 「这周有什么考试？」<br>
@@ -19,6 +19,7 @@
     <div class="chat-input-row">
         <input id="chat-input" placeholder="输入你的问题，回车发送…">
         <button id="chat-send" class="btn btn-primary">发送</button>
+        <button id="chat-clear" class="btn btn-small" title="清空全部聊天记录">🗑 清空</button>
     </div>
 
     {% if not agent_ready %}

@@ -7,6 +7,7 @@
   3. 启动本地服务器
 """
 
+import datetime
 import json
 import os
 import sys
@@ -106,12 +107,17 @@ def index():
     ], ensure_ascii=False)
 
 
+    # 今天截止的 DDL 数（首页 Toast 提醒用）
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    today_count = sum(1 for it in items if (it["task"]["due_at"] or "").startswith(today))
+
     return render_template(
         "index.html",
         overdue=overdue,
         urgent=urgent,
         upcoming=upcoming,
         pending_count=len(items),
+        today_count=today_count,
         schedule=schedule_rows,
         schedule_count=models.count_course_schedule(),
         schedule_json=schedule_json,
@@ -134,8 +140,10 @@ def ddl_add():
     due_at = request.form.get("due_at", "").strip()
     course_name = request.form.get("course_name", "").strip()
     note = request.form.get("note", "").strip()
-    remind_1d = 1 if request.form.get("remind_1d") else 0
-    remind_3h = 1 if request.form.get("remind_3h") else 0
+    # 提醒时机：下拉选固定档位，选"自定义"时读输入框的小时数
+    remind_hours = request.form.get("remind_before_hours", "24")
+    if remind_hours == "custom":
+        remind_hours = request.form.get("remind_custom_hours", "0")
 
     if not title or not due_at:
         flash("请填写任务名称和截止时间", "error")
@@ -144,7 +152,11 @@ def ddl_add():
     # 浏览器给的是 "2026-08-20T23:00"，数据库要的是 "2026-08-20 23:00"（把 T 换成空格）
     due_at = due_at.replace("T", " ")
     course_id = models.find_or_create_course(course_name)
-    models.add_ddl(title, course_id, due_at, note, remind_1d, remind_3h)
+    # 查重：相同任务名+课程+截止时间说明已经记过了，不重复添加
+    if models.ddl_exists(title, course_id, due_at):
+        flash("这条 DDL 之前已经记过了（相同任务名+课程+截止时间），没有重复添加", "warn")
+        return redirect(url_for("ddl_list"))
+    models.add_ddl(title, course_id, due_at, note, remind_hours)
     flash("已保存！", "ok")
     return redirect(url_for("ddl_list"))
 
@@ -177,8 +189,7 @@ def api_ddl_get(task_id):
         "course_name": task["course_name"] or "",
         "due_at": task["due_at"],
         "note": task["note"] or "",
-        "remind_1d": task["remind_1d"],
-        "remind_3h": task["remind_3h"],
+        "remind_before_hours": task["remind_before_hours"],
     }
 
 
@@ -189,8 +200,10 @@ def ddl_edit(task_id):
     due_at = request.form.get("due_at", "").strip()
     course_name = request.form.get("course_name", "").strip()
     note = request.form.get("note", "").strip()
-    remind_1d = 1 if request.form.get("remind_1d") else 0
-    remind_3h = 1 if request.form.get("remind_3h") else 0
+    # 提醒时机：下拉选固定档位，选"自定义"时读输入框的小时数
+    remind_hours = request.form.get("remind_before_hours", "24")
+    if remind_hours == "custom":
+        remind_hours = request.form.get("remind_custom_hours", "0")
 
     if not title or not due_at:
         return {"error": "请填写任务名称和截止时间"}, 400
@@ -198,7 +211,7 @@ def ddl_edit(task_id):
     due_at = due_at.replace("T", " ")
     course_id = models.find_or_create_course(course_name)
     models.update_ddl(task_id, title=title, course_id=course_id, due_at=due_at,
-                      note=note, remind_1d=remind_1d, remind_3h=remind_3h)
+                      note=note, remind_before_hours=remind_hours)
     return {"ok": True}
 
 
@@ -425,6 +438,8 @@ def export_download():
             payload, filename, mime = exporter.to_ical(pending_ddls, plans), "学习助手-DDL日历.ics", "text/calendar; charset=utf-8"
         elif fmt == "csv":
             payload, filename, mime = exporter.to_csv_ddl(ddls), "学习助手-DDL清单.csv", "text/csv; charset=utf-8"
+        elif fmt == "json":
+            payload, filename, mime = exporter.to_json_ddl(ddls), "学习助手-DDL清单.json", "application/json; charset=utf-8"
         else:
             payload, filename, mime = exporter.to_markdown_ddl(ddls), "学习助手-DDL清单.md", "text/markdown; charset=utf-8"
     elif data_type == "review":
@@ -450,6 +465,44 @@ def export_download():
     return resp
 
 
+@app.route("/import/ddl", methods=["POST"])
+def import_ddl():
+    """从 CSV/JSON 文件导入 DDL（兼容本应用导出的格式，自动去重）"""
+    file = request.files.get("file")
+    if not file or not file.filename:
+        flash("请选择要导入的文件（CSV 或 JSON）", "error")
+        return redirect(url_for("export_page"))
+
+    items, err = exporter.parse_import_content(file.filename, file.read())
+    if err:
+        flash(err, "error")
+        return redirect(url_for("export_page"))
+    if not items:
+        flash("文件里没有识别到可导入的 DDL（每行至少要有任务名和截止时间）", "error")
+        return redirect(url_for("export_page"))
+
+    saved = skipped = done_restored = 0
+    for it in items:
+        course_id = models.find_or_create_course(it["course"])
+        # 去重：和现有任务完全相同的（任务名+课程+截止时间）跳过
+        if models.ddl_exists(it["title"], course_id, it["due_at"]):
+            skipped += 1
+            continue
+        task_id = models.add_ddl(it["title"], course_id, it["due_at"], it["note"], 24)
+        if it["done"]:
+            models.complete_ddl(task_id)   # 导出的"已完成"状态原样恢复
+            done_restored += 1
+        saved += 1
+
+    msg = f"导入完成：新增 {saved} 条"
+    if done_restored:
+        msg += f"（其中 {done_restored} 条恢复为已完成）"
+    if skipped:
+        msg += f"，{skipped} 条重复已跳过"
+    flash(msg, "ok")
+    return redirect(url_for("export_page"))
+
+
 @app.route("/agent")
 def agent_page():
     """智能体对话页"""
@@ -459,21 +512,39 @@ def agent_page():
 
 @app.route("/api/agent/chat", methods=["POST"])
 def agent_chat():
-    """接收用户消息 → 智能体处理 → 返回回答"""
+    """接收用户消息 → 智能体处理 → 返回回答。
+    聊天记录存数据库（刷新/重启都不丢），上下文自动从库里取最近 40 条。"""
     message = (request.form.get("message") or "").strip()
-    history = request.form.get("history") or "[]"
     if not message:
         return {"error": "消息不能为空"}
 
-    try:
-        history = json.loads(history)
-    except json.JSONDecodeError:
-        history = []
-    messages = [m for m in history if m.get("role") in ("user", "assistant")][-10:]
-    messages.append({"role": "user", "content": message})
+    # 1. 用户的话先入库存档
+    models.add_chat_message("user", message)
 
+    # 2. 从数据库组装上下文（最近 40 条，让智能体记得前面聊了什么）
+    history = models.list_chat_messages(limit=40)
+    messages = [{"role": r["role"], "content": r["content"]} for r in history]
+
+    # 3. 调用智能体；回答成功才入库（失败信息不入库）
     ok, result = agent.chat(messages)
-    return {"reply": result} if ok else {"error": result}
+    if ok:
+        models.add_chat_message("assistant", result)
+        return {"reply": result}
+    return {"error": result}
+
+
+@app.route("/api/agent/history")
+def agent_history():
+    """聊天记录（智能体对话页加载时恢复显示用）"""
+    rows = models.list_chat_messages(limit=200)
+    return {"messages": [{"role": r["role"], "content": r["content"]} for r in rows]}
+
+
+@app.route("/api/agent/history/clear", methods=["POST"])
+def agent_history_clear():
+    """清空聊天记录"""
+    models.clear_chat_messages()
+    return {"ok": True}
 
 
 @app.route("/settings")
@@ -556,7 +627,7 @@ def crawler_import():
             continue
         models.add_ddl(title, course_id, due_at,
                        note=f"来自{it.get('source') or '爬虫'}自动同步",
-                       remind_1d=1, remind_3h=1, source="crawler")
+                       remind_before_hours=24, source="crawler")
         saved += 1
     models.add_crawl_log("crawler", "success", f"导入 DDL 清单：新增 {saved} 条" +
                          (f"（{skipped} 条已存在，跳过）" if skipped else "") + "。")

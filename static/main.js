@@ -51,7 +51,7 @@ var chatInput = document.getElementById("chat-input");
 var chatSend = document.getElementById("chat-send");
 var chatBox = document.getElementById("chat-box");
 if (chatInput && chatSend && chatBox) {
-    var chatHistory = [];   // 记住对话历史（最近 10 条），让智能体有上下文
+    var chatWelcome = document.getElementById("chat-welcome");
 
     function appendMsg(role, text) {
         var div = document.createElement("div");
@@ -62,6 +62,20 @@ if (chatInput && chatSend && chatBox) {
         return div;
     }
 
+    // 打开页面时恢复历史聊天记录（存数据库，刷新/重启都不丢）
+    fetch("/api/agent/history")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var msgs = data.messages || [];
+            if (msgs.length > 0) {
+                if (chatWelcome) chatWelcome.remove();   // 有历史就不再显示欢迎语
+                msgs.forEach(function (m) {
+                    appendMsg(m.role, m.content);
+                });
+            }
+        })
+        .catch(function () { });
+
     function send() {
         var text = chatInput.value.trim();
         if (!text) return;
@@ -71,12 +85,10 @@ if (chatInput && chatSend && chatBox) {
         var typing = appendMsg("agent", "…");
         typing.classList.add("chat-typing");
 
+        // 聊天记录由后端存数据库、后端组装上下文，前端不用再维护 history
         fetch("/api/agent/chat", {
             method: "POST",
-            body: new URLSearchParams({
-                message: text,
-                history: JSON.stringify(chatHistory),
-            }),
+            body: new URLSearchParams({ message: text }),
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -85,17 +97,26 @@ if (chatInput && chatSend && chatBox) {
                     appendMsg("agent", "⚠️ " + data.error);
                 } else {
                     appendMsg("agent", data.reply);
-                    chatHistory.push({ role: "user", content: text });
-                    chatHistory.push({ role: "assistant", content: data.reply });
-                    if (chatHistory.length > 10) {
-                        chatHistory = chatHistory.slice(-10);
-                    }
                 }
             })
             .catch(function () {
                 typing.remove();
                 appendMsg("agent", "⚠️ 网络或服务器出错，请稍后再试。");
             });
+    }
+
+    // 清空对话（连同数据库里的历史一起删，恢复欢迎语）
+    var chatClear = document.getElementById("chat-clear");
+    if (chatClear) {
+        chatClear.addEventListener("click", function () {
+            if (!confirm("确定清空全部聊天记录吗？")) return;
+            fetch("/api/agent/history/clear", { method: "POST" })
+                .then(function () {
+                    chatBox.innerHTML = "";
+                    if (chatWelcome) chatBox.appendChild(chatWelcome);
+                })
+                .catch(function () { alert("清空失败，请稍后再试"); });
+        });
     }
 
     chatSend.addEventListener("click", send);
@@ -460,7 +481,7 @@ function showCaptchaDialog(imageBase64, msg) {
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                box.innerHTML = '<p class="empty">' + (data.ok ? "已提交，等待登录完成…" : ("提交失败：" + data.msg)) + '</p>';
+                box.innerHTML = '<p class="empty">' + (data.ok ? "已提交，等待登录完成…" : ("提交失败：" + esc(data.msg))) + '</p>';
                 if (data.ok) {
                     // 提交后同步线程继续，稍后刷新看结果
                     captchaPollTimer = setTimeout(function () { location.reload(); }, 3500);
@@ -640,5 +661,52 @@ if (extractBtn) {
                     });
                 });
             });
+    });
+}
+
+// ============================================
+// 右下角弹出提示（Toast）+ 浏览器通知
+// ============================================
+// showToast("文字", "ok/warn/error", "按钮文字", 点击按钮后执行的函数)
+function showToast(msg, type, actionLabel, actionFn) {
+    var container = document.getElementById("toast-container");
+    if (!container) return;
+    var el = document.createElement("div");
+    el.className = "toast toast-" + (type || "ok");
+    var text = document.createElement("span");
+    text.textContent = msg;          // textContent：安全，不会执行 HTML
+    el.appendChild(text);
+    if (actionLabel && actionFn) {
+        var btn = document.createElement("button");
+        btn.className = "toast-action";
+        btn.textContent = actionLabel;
+        btn.addEventListener("click", function () {
+            el.remove();             // 点按钮后立刻消失
+            actionFn();
+        });
+        el.appendChild(btn);
+    }
+    var close = document.createElement("button");
+    close.className = "toast-close";
+    close.textContent = "✕";
+    close.addEventListener("click", function () { el.remove(); });
+    el.appendChild(close);
+    container.appendChild(el);
+    // 自动消失：带按钮的多留一会儿，给人点的时间
+    setTimeout(function () { el.remove(); }, actionFn ? 8000 : 3500);
+}
+
+// 开启浏览器通知（需要用户点一次授权，只有 https 或 localhost 才支持）
+function enableNotifications() {
+    if (!("Notification" in window)) {
+        showToast("此浏览器不支持通知", "error");
+        return;
+    }
+    Notification.requestPermission().then(function (p) {
+        if (p === "granted") {
+            new Notification("学习助手 Pro", { body: "通知已开启！DDL 截止当天打开页面会提醒你。" });
+        } else {
+            showToast("通知权限未开启，仍会在页面内弹出提示", "warn");
+        }
     });
 }

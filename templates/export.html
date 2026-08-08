@@ -19,6 +19,7 @@
                 <select name="fmt">
                     <option value="ical">iCal 日历（.ics）</option>
                     <option value="csv">CSV（Excel 可打开）</option>
+                    <option value="json">JSON（.json）</option>
                     <option value="markdown">Markdown（.md）</option>
                 </select>
             </label>
@@ -33,8 +34,30 @@
             「提前 1 天」和「提前 3 小时」两个闹钟。把文件导入手机/电脑的日历 App
             （iPhone 日历、Google 日历、Outlook、小米/华为日历等），到点日历会自动弹通知——
             <strong>即使应用没开也能收到提醒</strong>。</p>
-        <p>📋 CSV 用 Excel 打开中文不乱码；Markdown 可用于笔记软件（Obsidian、Typora 等）。</p>
-        <p>⚠️ 资料目录不支持导出 iCal（日历里放不下文件清单），请选 CSV 或 Markdown。</p>
+        <p>📋 CSV 用 Excel 打开中文不乱码；JSON 用于备份/换电脑（和下方「导入」配套）；
+            Markdown 可用于笔记软件（Obsidian、Typora 等）。</p>
+        <p>⚠️ 资料目录不支持导出 iCal（日历里放不下文件清单），请选 CSV、JSON 或 Markdown。</p>
+    </div>
+</div>
+
+<!-- 导入：CSV/JSON → DDL 清单（和上方导出配套，换电脑/恢复数据用） -->
+<div class="card">
+    <h2>📥 导入 DDL</h2>
+    <form method="post" action="{{ url_for('import_ddl') }}" enctype="multipart/form-data" class="search-form">
+        <div class="form-grid">
+            <label>选择文件（CSV 或 JSON）
+                <input type="file" name="file" accept=".csv,.json,.txt" required>
+            </label>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary">导入</button>
+        </div>
+    </form>
+    <div class="note">
+        <p>💡 支持两种文件：① 本应用导出的 DDL CSV / JSON（最简单：先导出，换电脑再导入）；
+            ② 自己整理的 CSV——第一列任务名、第二列课程、第三列截止时间
+            （如 <code>2026-08-20</code> 或 <code>2026-08-20 23:00</code>），可加表头。</p>
+        <p>🔁 和已有任务完全相同的（任务名+课程+截止时间）会自动跳过，不会产生重复。</p>
     </div>
 </div>
 {% endblock %}

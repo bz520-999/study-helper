@@ -156,6 +156,57 @@ input:focus {
 .flash-ok    { background: #e6f4ea; color: #1e7e34; border: 1px solid #c3e6cc; }
 .flash-error { background: #fdecec; color: #c92a2a; border: 1px solid #f3c1c1; }
 
+/* ---------- 右下角弹出提示（Toast） ---------- */
+#toast-container {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 340px;
+}
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    animation: toast-in .25s ease;
+    background: #fff;
+}
+.toast-ok    { border-left: 4px solid #2ecc71; }
+.toast-warn  { border-left: 4px solid #f39c12; }
+.toast-error { border-left: 4px solid #e74c3c; }
+.toast-action {
+    border: none;
+    background: #2f6fed;
+    color: #fff;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.toast-action:hover { background: #1f5bd0; }
+.toast-close {
+    border: none;
+    background: none;
+    color: #bbb;
+    font-size: 13px;
+    cursor: pointer;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.toast-close:hover { color: #666; }
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 .empty { color: #999; font-size: 14px; padding: 12px 0; }
 
 /* ---------- 资料 ---------- */

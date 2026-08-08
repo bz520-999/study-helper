@@ -56,8 +56,43 @@ def _review_text():
 
 
 def _courses_text():
+    """系统里出现过的课程名（DDL/资料关联时自动记录的标签，不是课表！）"""
     rows = models.list_courses()
     return "、".join(r["name"] for r in rows) if rows else "还没有课程。"
+
+
+def _schedule_text():
+    """真实课表（教务系统同步）：按星期分组列出课程 + 节次 + 教室"""
+    rows = models.list_course_schedule()
+    if not rows:
+        return "还没有课表数据。可以到「设置」页同步教务系统导入课表。"
+    by_day = {}
+    for r in rows:
+        by_day.setdefault(r["day"] or "未排", []).append(r)
+    days = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    lines = []
+    for d in days:
+        items = by_day.get(d)
+        if not items:
+            continue
+        parts = []
+        for r in items:
+            s = r["course_name"]
+            sec = (r["sections"] or r["slot"] or "").strip()
+            loc = (r["location"] or "").strip()
+            weeks = (r["weeks"] or "").strip()
+            extra = []
+            if sec:
+                extra.append(f"{sec}节")
+            if loc:
+                extra.append(loc)
+            if weeks:
+                extra.append(f"{weeks}周")
+            if extra:
+                s += "（" + "，".join(extra) + "）"
+            parts.append(s)
+        lines.append(f"{d}：{'、'.join(parts)}")
+    return "；".join(lines) if lines else "课表里还没有排课。"
 
 
 def _find_ddl(ddl_id):
@@ -69,7 +104,7 @@ def _find_ddl(ddl_id):
 
 # ==================== 操作类工具的实现 ====================
 
-def _add_ddl(title, due_at, course="", note="", remind_1d=True, remind_3h=True):
+def _add_ddl(title, due_at, course="", note="", remind_hours=None):
     if not title or not due_at:
         return "任务名称和截止时间不能为空。"
     due_at = due_at.strip().replace("T", " ")
@@ -86,8 +121,14 @@ def _add_ddl(title, due_at, course="", note="", remind_1d=True, remind_3h=True):
     if not course:
         course = autotag.suggest_course(title)
     course_id = models.find_or_create_course(course)
-    models.add_ddl(title, course_id, due_at, note, 1 if remind_1d else 0, 1 if remind_3h else 0)
-    return f"已添加 DDL：{title}（{course or '未分类'}，截止 {due_at}）"
+    # 查重：相同任务名+课程+截止时间说明已经记过了
+    if models.ddl_exists(title, course_id, due_at):
+        return f"这条 DDL 之前已经记过了（{title}，{course or '未分类'}，截止 {due_at}），没有重复添加。"
+    # 提醒时机：默认提前 1 天；用户说了就按说的来（如"提前2天提醒我" → remind_hours=48）
+    hours = remind_hours if remind_hours is not None else 24
+    models.add_ddl(title, course_id, due_at, note, hours)
+    remind_note = "（不提醒）" if hours == 0 else f"（提前 {hours} 小时提醒）"
+    return f"已添加 DDL：{title}（{course or '未分类'}，截止 {due_at}）{remind_note}"
 
 
 def _complete_ddl(ddl_id):
@@ -168,8 +209,14 @@ TOOLS = [
         "handler": lambda keyword="", course="", tag="": _materials_text(keyword, course, tag),
     },
     {
+        "name": "query_schedule",
+        "description": "查询我的开学课程表（教务系统同步的真实课表：星期几、第几节、教室、周次）。当用户问\"我有什么课/课表/每周几上什么课/某门课什么时候在哪上\"时调用。",
+        "parameters": {"type": "object", "properties": {}},
+        "handler": lambda **kw: _schedule_text(),
+    },
+    {
         "name": "query_courses",
-        "description": "列出所有课程。",
+        "description": "列出系统里出现过的课程名（DDL、资料关联时自动记录的课程标签）。注意：这不是课表！用户问\"我的课表/我有什么课\"请用 query_schedule。",
         "parameters": {"type": "object", "properties": {}},
         "handler": lambda **kw: _courses_text(),
     },
@@ -189,8 +236,7 @@ TOOLS = [
                 "due_at": {"type": "string", "description": "截止时间。可以是标准格式（2026-08-20 23:00），也可以是自然语言（下周三下午两点、明天晚上9点、3天后），工具会自动换算。用户怎么说就怎么填，不要自己心算日期。"},
                 "course": {"type": "string", "description": "课程名（可选）"},
                 "note": {"type": "string", "description": "备注（可选）"},
-                "remind_1d": {"type": "boolean", "description": "是否提前 1 天提醒，默认 true"},
-                "remind_3h": {"type": "boolean", "description": "是否提前 3 小时提醒，默认 true"},
+                "remind_hours": {"type": "integer", "description": "提前多少小时提醒（可选）。用户说\"提前2天\"就填 48，\"提前1小时\"填 1，\"不要提醒\"填 0；没提就省略，默认提前 24 小时（1 天）"},
             },
             "required": ["title", "due_at"],
         },

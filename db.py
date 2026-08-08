@@ -42,8 +42,7 @@ def init_db():
         title TEXT NOT NULL,                  -- 任务名称，如"高数期中考试"
         course_id INTEGER,                    -- 关联的课程 id（可空）
         due_at TEXT NOT NULL,                 -- 截止时间，格式 "YYYY-MM-DD HH:MM"
-        remind_1d INTEGER NOT NULL DEFAULT 1, -- 是否提前 1 天提醒（1=是 0=否）
-        remind_3h INTEGER NOT NULL DEFAULT 1, -- 是否提前 3 小时提醒
+        remind_before_hours INTEGER NOT NULL DEFAULT 24, -- 提前多少小时提醒（0=不提醒）
         status TEXT NOT NULL DEFAULT 'pending',  -- pending=未完成 done=已完成
         source TEXT NOT NULL DEFAULT 'manual',   -- 来源：manual=手动录入
         note TEXT,
@@ -83,6 +82,14 @@ def init_db():
         plan_date TEXT NOT NULL,              -- 复习日期 YYYY-MM-DD
         content TEXT NOT NULL,                -- 复习内容（含课程和资料清单）
         done INTEGER NOT NULL DEFAULT 0,      -- 0=未完成 1=已完成
+        created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+
+    -- 智能体聊天记录表（2026-08-08 新增：刷新页面/重启都不丢）
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,                  -- user=用户说的 assistant=智能体回的
+        content TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
@@ -144,6 +151,22 @@ def init_db():
             conn.execute("UPDATE course_schedule SET day='', slot='', weeks=''")
         if "sections" not in cols:
             conn.execute("ALTER TABLE course_schedule ADD COLUMN sections TEXT")
+    except Exception:
+        pass
+
+    # ---- 提醒自定义迁移（2026-08-08）：remind_1d/remind_3h → remind_before_hours ----
+    # 老表只有两个固定开关：合成一个"提前多少小时"（取更早的那个提醒，即更小的时数）
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(ddl_tasks)")}
+        if "remind_before_hours" not in cols:
+            conn.execute("ALTER TABLE ddl_tasks ADD COLUMN remind_before_hours INTEGER NOT NULL DEFAULT 24")
+            conn.execute("""
+                UPDATE ddl_tasks SET remind_before_hours = CASE
+                    WHEN remind_3h = 1 THEN 3        -- 提前 3 小时（含两个都开的情况，取更早的）
+                    WHEN remind_1d = 1 THEN 24       -- 只开提前 1 天
+                    ELSE 0                           -- 都关 = 不提醒
+                END
+            """)
     except Exception:
         pass
     conn.commit()

@@ -41,12 +41,16 @@ def list_courses():
 
 # ==================== DDL 任务 ====================
 
-def add_ddl(title, course_id, due_at, note="", remind_1d=1, remind_3h=1, source="manual"):
-    """新增一条 DDL"""
+def add_ddl(title, course_id, due_at, note="", remind_before_hours=24, source="manual"):
+    """新增一条 DDL。remind_before_hours：提前多少小时提醒（0=不提醒，默认提前 1 天）"""
+    try:
+        hours = max(0, min(int(remind_before_hours or 0), 24 * 365))   # 兜底：非法值收进 0~8760
+    except (TypeError, ValueError):
+        hours = 24
     return db.execute(
-        "INSERT INTO ddl_tasks (title, course_id, due_at, note, remind_1d, remind_3h, source) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (title, course_id, due_at, note, remind_1d, remind_3h, source),
+        "INSERT INTO ddl_tasks (title, course_id, due_at, note, remind_before_hours, source) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (title, course_id, due_at, note, hours, source),
     )
 
 
@@ -105,7 +109,7 @@ def get_ddl(task_id):
 
 
 def update_ddl(task_id, title=None, course_id=None, due_at=None, note=None,
-               remind_1d=None, remind_3h=None):
+               remind_before_hours=None):
     """更新一条 DDL（只更新传入的非 None 字段）"""
     fields = {}
     if title is not None:
@@ -116,10 +120,11 @@ def update_ddl(task_id, title=None, course_id=None, due_at=None, note=None,
         fields["due_at"] = due_at
     if note is not None:
         fields["note"] = note
-    if remind_1d is not None:
-        fields["remind_1d"] = remind_1d
-    if remind_3h is not None:
-        fields["remind_3h"] = remind_3h
+    if remind_before_hours is not None:
+        try:
+            fields["remind_before_hours"] = max(0, min(int(remind_before_hours), 24 * 365))
+        except (TypeError, ValueError):
+            fields["remind_before_hours"] = 24
 
     if not fields:
         return
@@ -132,6 +137,35 @@ def update_ddl(task_id, title=None, course_id=None, due_at=None, note=None,
 def delete_ddl(task_id):
     """删除一条 DDL"""
     db.execute("DELETE FROM ddl_tasks WHERE id = ?", (task_id,))
+
+
+# ==================== 智能体聊天记录 ====================
+
+def add_chat_message(role, content):
+    """存一条聊天记录（role: user / assistant）"""
+    return db.execute(
+        "INSERT INTO chat_messages (role, content) VALUES (?, ?)", (role, content))
+
+
+def list_chat_messages(limit=200):
+    """按时间顺序取聊天记录（最新的在前限制条数）"""
+    conn = db.get_conn()
+    try:
+        # 先取最新的 limit 条（倒序），再翻回来按时间正序展示
+        rows = conn.execute(
+            "SELECT role, content FROM ("
+            "  SELECT id, role, content FROM chat_messages ORDER BY id DESC LIMIT ?"
+            ") ORDER BY id",
+            (limit,),
+        ).fetchall()
+        return rows
+    finally:
+        conn.close()
+
+
+def clear_chat_messages():
+    """清空全部聊天记录"""
+    db.execute("DELETE FROM chat_messages")
 
 
 # ==================== 资料 ====================

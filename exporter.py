@@ -8,6 +8,8 @@
 
 import csv
 import io
+import json
+import re
 import uuid
 from datetime import date, datetime, timedelta
 
@@ -46,20 +48,14 @@ def to_ical(ddls, plans):
         ev.add("dtend", start + timedelta(hours=1))
         ev.add("dtstamp", datetime.now())
 
-        # 闹钟 1：提前 1 天
-        if d["remind_1d"]:
+        # 闹钟：按自定义的提前小时数生成（如提前 6 小时 → "还剩 6 小时"）
+        # 注意：d 是 sqlite3.Row，只能用下标 d["..."]，没有 .get() 方法
+        hours = d["remind_before_hours"] or 0
+        if hours > 0:
             alarm = icalendar.Alarm()
             alarm.add("action", "DISPLAY")
-            alarm.add("description", f"提醒：{d['title']} 还剩 1 天！")
-            alarm.add("trigger", timedelta(days=-1))   # 负号 = 提前
-            ev.add_component(alarm)
-
-        # 闹钟 2：提前 3 小时
-        if d["remind_3h"]:
-            alarm = icalendar.Alarm()
-            alarm.add("action", "DISPLAY")
-            alarm.add("description", f"提醒：{d['title']} 还剩 3 小时！")
-            alarm.add("trigger", timedelta(hours=-3))
+            alarm.add("description", f"提醒：{d['title']} 还剩 {_fmt_remind(hours)}！")
+            alarm.add("trigger", timedelta(hours=-hours))   # 负号 = 提前
             ev.add_component(alarm)
 
         cal.add_component(ev)
@@ -76,6 +72,16 @@ def to_ical(ddls, plans):
         cal.add_component(ev)
 
     return cal.to_ical().decode("utf-8")
+
+
+def _fmt_remind(hours):
+    """把提前小时数写成好读的话：24 → "1 天"，48 → "2 天"，168 → "1 周" """
+    hours = int(hours)
+    if hours % 168 == 0:
+        return f"{hours // 168} 周"
+    if hours % 24 == 0:
+        return f"{hours // 24} 天"
+    return f"{hours} 小时"
 
 
 # ==================== CSV ====================
@@ -109,6 +115,135 @@ def to_csv_plans(plans):
     for p in plans:
         rows.append([p["plan_date"], p["content"], p["ddl_title"], "已完成" if p["done"] else "未完成"])
     return _csv_bytes(rows)
+
+
+def to_json_ddl(ddls):
+    """DDL 清单 → JSON（换电脑/备份用，格式和 parse_import_content 兼容）"""
+    rows = [{
+        "title": d["title"],
+        "course": d["course_name"] or "",
+        "due_at": d["due_at"],
+        "note": d["note"] or "",
+        "done": d["status"] == "done",
+    } for d in ddls]
+    return json.dumps(rows, ensure_ascii=False, indent=2)
+
+
+# ==================== 导入（CSV / JSON 解析） ====================
+
+_TIME_RE = re.compile(
+    r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?"
+)
+
+
+def _normalize_time(text):
+    """把各种写法统一成 2026-08-20 23:00；识别不了返回 None"""
+    if not text:
+        return None
+    text = str(text).strip()
+    m = _TIME_RE.match(text)
+    if not m:
+        return None
+    year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (1 <= month <= 12 and 1 <= day <= 31):
+        return None
+    hour = int(m.group(4)) if m.group(4) else 23   # 只写了日期 → 默认当天 23:59
+    minute = int(m.group(5)) if m.group(5) else 59
+    return f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}"
+
+
+def _decode_bytes(raw):
+    """按 UTF-8（带不带 BOM 都行）解码；Excel 存的是 GBK 时兜底"""
+    for enc in ("utf-8-sig", "gbk"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def parse_import_content(filename, raw):
+    """
+    解析导入文件（CSV 或 JSON），返回 (items, 错误消息或 None)。
+    items 每项：{"title", "course", "due_at", "note", "done"}
+    CSV 兼容本应用导出的格式：任务名称,课程,截止时间,状态,备注
+    JSON 兼容本应用导出的格式：数组，每项 title/course/due_at/note/done
+    """
+    name = (filename or "").lower()
+    text = _decode_bytes(raw)
+    items = []
+
+    if name.endswith(".json"):
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as e:
+            return [], f"JSON 解析失败：{e}"
+        if isinstance(data, dict):
+            data = data.get("ddl") or data.get("items") or []
+        if not isinstance(data, list):
+            return [], "JSON 格式不对：应是一个数组（可从导出页导出 JSON 得到）"
+        for row in data:
+            if not isinstance(row, dict):
+                continue
+            due_at = _normalize_time(row.get("due_at") or row.get("deadline"))
+            title = (row.get("title") or "").strip()
+            if not title or not due_at:
+                continue
+            items.append({
+                "title": title,
+                "course": (row.get("course") or row.get("course_name") or "").strip(),
+                "due_at": due_at,
+                "note": (row.get("note") or "").strip(),
+                "done": bool(row.get("done")),
+            })
+
+    elif name.endswith(".csv") or name.endswith(".txt"):
+        # 用 csv 模块解析（自动处理引号/逗号）
+        rows = list(csv.reader(io.StringIO(text)))
+        if not rows:
+            return [], "文件是空的"
+        # 表头识别：第一行里有没有"任务名称/标题/title"
+        header = [c.strip() for c in rows[0]]
+        idx_title = idx_course = idx_time = idx_note = idx_done = None
+        for i, h in enumerate(header):
+            if h in ("任务名称", "标题", "title", "Title", "任务名"):
+                idx_title = i
+            elif h in ("课程", "course", "课程名"):
+                idx_course = i
+            elif h in ("截止时间", "截止日期", "时间", "due_at", "due", "deadline"):
+                idx_time = i
+            elif h in ("备注", "note", "说明"):
+                idx_note = i
+            elif h in ("状态", "status"):
+                idx_done = i
+        if idx_title is None:
+            # 没表头 → 按位置：第一列标题、第二列课程、第三列时间
+            idx_title, idx_course, idx_time = 0, 1, 2
+            data_rows = rows
+        else:
+            data_rows = rows[1:]
+        for row in data_rows:
+            if not row or not any(c.strip() for c in row):
+                continue
+            title = (row[idx_title] if len(row) > idx_title else "").strip()
+            due_at = _normalize_time(row[idx_time] if len(row) > idx_time else "")
+            if not title or not due_at:
+                continue
+            done = False
+            if idx_done is not None and len(row) > idx_done:
+                done = row[idx_done].strip() in ("已完成", "完成", "done", "1", "是", "true", "True")
+            items.append({
+                "title": title,
+                "course": (row[idx_course] if idx_course is not None and len(row) > idx_course else "").strip(),
+                "due_at": due_at,
+                "note": (row[idx_note] if idx_note is not None and len(row) > idx_note else "").strip(),
+                "done": done,
+            })
+
+    else:
+        return [], "只支持 CSV 或 JSON 文件"
+
+    return items, None
 
 
 def to_csv_materials(materials):
