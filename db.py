@@ -104,7 +104,7 @@ def init_db():
     -- 爬虫日志表（记录每次同步的结果：成功/失败/原因）
     CREATE TABLE IF NOT EXISTS crawl_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source TEXT NOT NULL,             -- chaoxing / jwxt / paste
+        source TEXT NOT NULL,             -- chaoxing / crawler
         status TEXT NOT NULL,             -- success / failed / skipped
         message TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))

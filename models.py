@@ -50,6 +50,19 @@ def add_ddl(title, course_id, due_at, note="", remind_1d=1, remind_3h=1, source=
     )
 
 
+def ddl_exists(title, course_id, due_at):
+    """同一标题+课程+截止时间是否已存在（防止爬虫重复导入）"""
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id FROM ddl_tasks WHERE title = ? AND course_id = ? AND due_at = ?",
+            (title, course_id, due_at),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def list_ddl_tasks(status=None):
     """
     列出 DDL 任务（按截止时间从近到远排序），顺便带上课程名。

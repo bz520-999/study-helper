@@ -416,9 +416,6 @@ def settings_page():
         key_set=bool(models.get_setting("agent_api_key")),
         check_hour=models.get_setting("agent_check_hour") or str(config.AGENT_CHECK_HOUR),
         # 爬虫相关
-        crawler_enabled=models.get_setting("crawl_enabled") == "1",
-        crawl_username=models.get_setting("crawl_username"),
-        crawl_password_set=bool(models.get_setting("crawl_password")),
         crawl_logs=models.list_crawl_logs(),
         # 备份相关
         last_backup=backup.last_backup_time(),
@@ -436,41 +433,66 @@ def backup_now():
     return {"ok": False, "msg": "备份失败，请检查磁盘空间"}
 
 
-@app.route("/api/crawler/save", methods=["POST"])
-def crawler_save():
-    """保存爬虫账号（密码加密存储）和开关"""
-    username = request.form.get("crawl_username", "").strip()
-    password = request.form.get("crawl_password", "")
-    enabled = request.form.get("crawl_enabled") == "1"
-
-    if username:
-        models.set_setting("crawl_username", username)
-    if password:
-        # 加密后再存：数据库里是密文，页面永远不显示明文
-        models.set_setting("crawl_password", security.encrypt_text(password))
-    models.set_setting("crawl_enabled", "1" if enabled else "0")
-    return {"ok": True}
+@app.route("/api/crawler/chaoxing/status")
+def chaoxing_status():
+    """前端轮询：登录状态 + 同步状态（一次拿全）"""
+    return {
+        "logged_in": crawler.is_logged_in(),
+        "login": crawler.login_status(),
+        "sync": crawler.sync_status(),
+    }
 
 
-@app.route("/api/crawler/sync", methods=["POST"])
-def crawler_sync():
-    """立即执行一次同步（后台线程，结果写日志）"""
-    if not crawler.is_enabled():
-        models.add_crawl_log("sync", "skipped", "爬虫开关未开启，先在上方开启再同步。")
-        return {"ok": True, "msg": "爬虫开关未开启，已跳过。"}
-    msg = crawler.run_sync()
-    return {"ok": True, "msg": msg}
+@app.route("/api/crawler/chaoxing/qr", methods=["POST"])
+def chaoxing_qr():
+    """开始扫码登录（后台线程开浏览器出二维码）"""
+    try:
+        result = crawler.start_qr_login()
+        return {"ok": True, "msg": "已开始" if result == "started" else "二维码已生成，请稍候"}
+    except Exception as e:  # 依赖缺失（没装 playwright）时给友好提示
+        return {"ok": False, "msg": f"无法启动浏览器：{e}"}
 
 
-@app.route("/api/crawler/paste", methods=["POST"])
-def crawler_paste():
-    """半自动模式：粘贴学习通作业列表文字 → 提取 DDL 预览"""
-    text = request.form.get("text", "")
-    items = ddl_parser.parse_ddl_text(text)
+@app.route("/api/crawler/chaoxing/sync", methods=["POST"])
+def chaoxing_sync():
+    """开始同步抓取（后台线程）"""
+    result = crawler.start_sync()
+    return {"ok": result["ok"], "msg": result["msg"]}
+
+
+@app.route("/api/crawler/import", methods=["POST"])
+def crawler_import():
+    """把抓取预览里勾选的条目导入 DDL 清单（去重：同标题同课程同时间不重复加）"""
+    try:
+        items = json.loads(request.form.get("items", "[]"))
+    except json.JSONDecodeError:
+        items = []
+    saved = skipped = 0
     for it in items:
-        it["course"] = autotag.suggest_course(it["title"])
-    models.add_crawl_log("paste", "success", f"文本同步：识别到 {len(items)} 条 DDL。")
-    return {"items": items}
+        title = (it.get("title") or "").strip()
+        due_at = (it.get("deadline") or it.get("due_at") or "").strip().replace("T", " ")
+        course = (it.get("course") or "").strip()
+        if not title or not due_at:
+            continue
+        course_id = models.find_or_create_course(course)
+        if models.ddl_exists(title, course_id, due_at):
+            skipped += 1
+            continue
+        models.add_ddl(title, course_id, due_at,
+                       note=f"来自{it.get('source') or '爬虫'}自动同步",
+                       remind_1d=1, remind_3h=1, source="crawler")
+        saved += 1
+    models.add_crawl_log("crawler", "success", f"导入 DDL 清单：新增 {saved} 条" +
+                         (f"（{skipped} 条已存在，跳过）" if skipped else "") + "。")
+    return {"ok": True, "msg": f"已导入 {saved} 条" + (f"，{skipped} 条重复已跳过" if skipped else ""), "saved": saved}
+
+
+@app.route("/api/crawler/chaoxing/logout", methods=["POST"])
+def chaoxing_logout():
+    """退出学习通登录（清除本地登录态）"""
+    crawler.logout()
+    models.add_crawl_log("chaoxing", "skipped", "已退出学习通登录。")
+    return {"ok": True}
 
 
 @app.route("/api/agent/settings", methods=["POST"])
