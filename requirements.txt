@@ -5,4 +5,4 @@ apscheduler==3.10.4
 cryptography==42.0.8
 jieba==0.42.1
 playwright==1.62.0
-ddddocr==1.6.1
+# dddocr==1.6.1  # 队友教务爬虫的验证码识别（国内源下载极慢，已注释；缺它时走"人工输入验证码"降级，功能不受影响）
