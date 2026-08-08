@@ -398,3 +398,41 @@ textarea:focus { outline: 2px solid #cfe0ff; border-color: #2f6fed; }
 .sched-exam + .sched-course { /* 考试盖过课程 */
     z-index: 1;
 }
+
+/* ---------- 弹窗（编辑 DDL 等） ---------- */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal-box {
+    background: #fff;
+    border-radius: 14px;
+    padding: 28px 24px 20px;
+    width: 480px;
+    max-width: 94vw;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+    animation: modalIn 0.18s ease-out;
+}
+@keyframes modalIn {
+    from { opacity: 0; transform: translateY(-16px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-box h2 {
+    margin-bottom: 16px;
+    font-size: 17px;
+}
+.modal-box .form-grid {
+    margin-bottom: 12px;
+}
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
