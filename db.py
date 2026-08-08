@@ -115,7 +115,6 @@ def init_db():
         key TEXT PRIMARY KEY,
         value TEXT
     );
-    """)
 
     -- 课程安排表（教务课表同步进来，2026-08-07 队友新增）
     CREATE TABLE IF NOT EXISTS course_schedule (
