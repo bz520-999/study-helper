@@ -90,6 +90,45 @@ def complete_ddl(task_id):
     db.execute("UPDATE ddl_tasks SET status = 'done' WHERE id = ?", (task_id,))
 
 
+def get_ddl(task_id):
+    """按 id 查一条 DDL，带课程名（编辑弹窗用）"""
+    conn = db.get_conn()
+    try:
+        return conn.execute("""
+            SELECT d.*, c.name AS course_name
+            FROM ddl_tasks d
+            LEFT JOIN courses c ON d.course_id = c.id
+            WHERE d.id = ?
+        """, (task_id,)).fetchone()
+    finally:
+        conn.close()
+
+
+def update_ddl(task_id, title=None, course_id=None, due_at=None, note=None,
+               remind_1d=None, remind_3h=None):
+    """更新一条 DDL（只更新传入的非 None 字段）"""
+    fields = {}
+    if title is not None:
+        fields["title"] = title
+    if course_id is not None:
+        fields["course_id"] = course_id
+    if due_at is not None:
+        fields["due_at"] = due_at
+    if note is not None:
+        fields["note"] = note
+    if remind_1d is not None:
+        fields["remind_1d"] = remind_1d
+    if remind_3h is not None:
+        fields["remind_3h"] = remind_3h
+
+    if not fields:
+        return
+
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [task_id]
+    db.execute(f"UPDATE ddl_tasks SET {set_clause} WHERE id = ?", values)
+
+
 def delete_ddl(task_id):
     """删除一条 DDL"""
     db.execute("DELETE FROM ddl_tasks WHERE id = ?", (task_id,))

@@ -165,6 +165,43 @@ def ddl_delete(task_id):
     return redirect(url_for("ddl_list"))
 
 
+@app.route("/api/ddl/<int:task_id>")
+def api_ddl_get(task_id):
+    """返回单条 DDL 的 JSON（编辑弹窗用）"""
+    task = models.get_ddl(task_id)
+    if not task:
+        return {"error": "DDL 不存在"}, 404
+    return {
+        "id": task["id"],
+        "title": task["title"],
+        "course_name": task["course_name"] or "",
+        "due_at": task["due_at"],
+        "note": task["note"] or "",
+        "remind_1d": task["remind_1d"],
+        "remind_3h": task["remind_3h"],
+    }
+
+
+@app.route("/ddl/<int:task_id>/edit", methods=["POST"])
+def ddl_edit(task_id):
+    """编辑 DDL（AJAX POST，由前端弹窗提交）"""
+    title = request.form.get("title", "").strip()
+    due_at = request.form.get("due_at", "").strip()
+    course_name = request.form.get("course_name", "").strip()
+    note = request.form.get("note", "").strip()
+    remind_1d = 1 if request.form.get("remind_1d") else 0
+    remind_3h = 1 if request.form.get("remind_3h") else 0
+
+    if not title or not due_at:
+        return {"error": "请填写任务名称和截止时间"}, 400
+
+    due_at = due_at.replace("T", " ")
+    course_id = models.find_or_create_course(course_name)
+    models.update_ddl(task_id, title=title, course_id=course_id, due_at=due_at,
+                      note=note, remind_1d=remind_1d, remind_3h=remind_3h)
+    return {"ok": True}
+
+
 @app.route("/api/autotag")
 def api_autotag():
     """前端选文件后调用：根据文件名猜课程和标签（返回 JSON）"""
