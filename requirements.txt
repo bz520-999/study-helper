@@ -5,3 +5,4 @@ apscheduler==3.10.4
 cryptography==42.0.8
 jieba==0.42.1
 playwright==1.62.0
+ddddocr==1.6.1

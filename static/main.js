@@ -336,6 +336,205 @@ if (cxArea) {
 }
 
 // ============================================
+// 设置页：教务爬虫（保存账号 / 立即同步 / 半自动粘贴提取）【队友功能】
+// ============================================
+var crawlerForm = document.getElementById("crawler-form");
+if (crawlerForm) {
+    crawlerForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var msg = document.getElementById("crawl-msg");
+        msg.textContent = "保存中…";
+        fetch("/api/crawler/save", {
+            method: "POST",
+            body: new URLSearchParams(new FormData(crawlerForm)),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                msg.textContent = data.ok ? "✅ 已保存" : "保存失败";
+            });
+    });
+}
+
+var crawlSyncBtn = document.getElementById("crawl-sync-btn");
+if (crawlSyncBtn) {
+    crawlSyncBtn.addEventListener("click", function () {
+        var msg = document.getElementById("crawl-msg");
+        msg.textContent = "同步中…";
+        fetch("/api/crawler/sync", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                msg.textContent = data.msg || "已开始同步";
+                // 同步在后台跑，这里开始轮询"有没有要人工输入的验证码"
+                checkCrawlerCaptcha(msg);
+            });
+    });
+}
+
+// 退出登录：清除账号密码 + 课表，回到初始状态
+var logoutBtn = document.getElementById("crawler-logout-btn");
+if (logoutBtn) {
+    logoutBtn.addEventListener("click", function () {
+        var msg = document.getElementById("crawler-logout-msg");
+        if (!confirm("确定要退出登录吗？\n将清除教务账号密码，并清空已同步的课表数据。")) {
+            return;
+        }
+        msg.textContent = "正在退出…";
+        fetch("/api/crawler/logout", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                msg.textContent = data.ok ? "✅ " + data.msg : "退出失败";
+                setTimeout(function () { location.reload(); }, 1200);   // 刷新回到初始状态
+            });
+    });
+}
+
+// 同步完成后刷新页面时，若上次同步失败且提示了"校园网/验证码/半自动"，
+// 自动滚动到半自动粘贴区并高亮提示（引导用户用最稳妥的方式）
+var crawlLogsBox = document.getElementById("crawl-logs");
+if (crawlLogsBox) {
+    var latest = crawlLogsBox.getAttribute("data-latest");
+    var latestStatus = crawlLogsBox.getAttribute("data-latest-status");
+    if (latestStatus === "failed") {
+        var needPaste = /校园网|VPN|验证码|半自动|认证服务器连不上|结构可能已变化/.test(latest);
+        if (needPaste) {
+            var pasteCard = document.getElementById("crawl-paste-result");
+            var hint = document.getElementById("crawl-paste-note");
+            if (pasteCard) {
+                pasteCard.innerHTML =
+                    '<div class="note" style="margin-top:8px;border-color:#f0c040;background:#fffbea">' +
+                    '<p><strong>全自动同步没成功</strong>，请用下面的「半自动同步」：</p>' +
+                    '<p style="margin:6px 0 4px">① 浏览器打开教务系统，登录后进入「考试安排 / 作业」页</p>' +
+                    '<p style="margin:4px 0">② 按 Ctrl+A 全选 → Ctrl+C 复制整页文字</p>' +
+                    '<p style="margin:4px 0 6px">③ 粘贴到下方输入框 → 点「提取 DDL」→ 勾选确认导入</p>' +
+                    '</div>';
+                if (hint) {
+                    pasteCard.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+            }
+        }
+    }
+}
+
+// 轮询验证码：同步过程中若遇到需要人工输入，弹出验证码图让用户看
+var captchaPollTimer = null;
+function checkCrawlerCaptcha(msg) {
+    if (captchaPollTimer) clearTimeout(captchaPollTimer);
+    fetch("/api/crawler/captcha/status")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.status === "waiting" && data.image_base64) {
+                showCaptchaDialog(data.image_base64, msg);
+                return;   // 显示后不再轮询，等用户提交
+            }
+            if (data.status === "idle") {
+                // 没有待输入的验证码，但同步可能还在跑：短暂后再查
+                captchaPollTimer = setTimeout(function () {
+                    checkCrawlerCaptcha(msg);
+                }, 1500);
+            }
+            // submitted/timeout：验证码环节已结束，交给上面的 2500ms 刷新兜底
+        })
+        .catch(function () { });
+}
+
+function showCaptchaDialog(imageBase64, msg) {
+    if (captchaPollTimer) clearTimeout(captchaPollTimer);
+    var box = document.getElementById("crawl-paste-result");   // 复用页面上已有的结果区
+    box.innerHTML =
+        '<div class="note" style="margin-top:6px">' +
+        '<p><strong>请输入验证码</strong>（图片如下，看不清可点「重新同步」）</p>' +
+        '<img src="data:image/png;base64,' + imageBase64 + '" alt="验证码" ' +
+        'style="border:1px solid #ccc;border-radius:4px;max-height:64px;display:block;margin:8px 0">' +
+        '<input type="text" id="captcha-answer" placeholder="输入图中的字符" ' +
+        'autocomplete="off" style="width:160px"> ' +
+        '<button type="button" class="btn btn-primary" id="captcha-submit-btn">提交验证码</button>' +
+        '</div>';
+    var answerInput = document.getElementById("captcha-answer");
+    answerInput.focus();
+    function submitCaptcha() {
+        var answer = answerInput.value.trim();
+        if (!answer) { alert("请先输入验证码"); return; }
+        fetch("/api/crawler/captcha/submit", {
+            method: "POST",
+            body: new URLSearchParams({ answer: answer }),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                box.innerHTML = '<p class="empty">' + (data.ok ? "已提交，等待登录完成…" : ("提交失败：" + data.msg)) + '</p>';
+                if (data.ok) {
+                    // 提交后同步线程继续，稍后刷新看结果
+                    captchaPollTimer = setTimeout(function () { location.reload(); }, 3500);
+                }
+            });
+    }
+    document.getElementById("captcha-submit-btn").addEventListener("click", submitCaptcha);
+    answerInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submitCaptcha();
+    });
+}
+
+var pasteBtn = document.getElementById("crawl-paste-btn");
+if (pasteBtn) {
+    pasteBtn.addEventListener("click", function () {
+        var text = document.getElementById("crawl-paste-text").value;
+        var box = document.getElementById("crawl-paste-result");
+        if (!text.trim()) {
+            box.innerHTML = '<p class="empty">请先粘贴文字</p>';
+            return;
+        }
+        fetch("/api/crawler/paste", {
+            method: "POST",
+            body: new URLSearchParams({ text: text }),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.items.length === 0) {
+                    box.innerHTML = '<p class="empty">没有识别到日期，请检查复制的内容</p>';
+                    return;
+                }
+                var html = '<p class="empty">识别到 ' + data.items.length + ' 条，确认后加入 DDL 清单：</p>';
+                data.items.forEach(function (item) {
+                    html += '<label class="extract-row">' +
+                        '<input type="checkbox" class="extract-check" checked> ' +
+                        '<input type="text" class="extract-title" value="' + esc(item.title) + '">' +
+                        '<input type="text" class="extract-course" value="' + esc(item.course || "") + '" placeholder="课程">' +
+                        '<input type="text" class="extract-due" value="' + esc(item.due_at) + '">' +
+                        '</label>';
+                });
+                html += '<button type="button" class="btn btn-primary" id="crawl-import-btn">确认加入 DDL 清单</button>';
+                box.innerHTML = html;
+
+                document.getElementById("crawl-import-btn").addEventListener("click", function () {
+                    var rows = box.querySelectorAll(".extract-row");
+                    var pending = 0;
+                    rows.forEach(function (row) {
+                        if (row.querySelector(".extract-check").checked) pending++;
+                    });
+                    if (pending === 0) { alert("请先勾选要导入的条目"); return; }
+                    var saved = 0;
+                    rows.forEach(function (row) {
+                        if (!row.querySelector(".extract-check").checked) return;
+                        var title = row.querySelector(".extract-title").value.trim();
+                        var course = row.querySelector(".extract-course").value.trim();
+                        var due = row.querySelector(".extract-due").value.trim().replace("T", " ");
+                        if (!title || !due) return;
+                        fetch("/ddl/add", {
+                            method: "POST",
+                            body: new URLSearchParams({ title: title, course_name: course, due_at: due }),
+                        }).then(function () {
+                            saved++;
+                            if (saved === pending) {
+                                alert("已加入 DDL 清单 ✅");
+                                location.reload();
+                            }
+                        });
+                    });
+                });
+            });
+    });
+}
+
+// ============================================
 // 设置页：删除已保存的 API Key
 // ============================================
 var deleteKeyBtn = document.getElementById("delete-key-btn");

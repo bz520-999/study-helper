@@ -10,6 +10,7 @@ rem ============================================================
 rem Note: crawler uses Playwright - it falls back to the system
 rem Microsoft Edge automatically, so no browser download needed.
 
+
 echo [1/2] Building main program (StudyHelper.exe) ...
 python -m PyInstaller --noconfirm --clean --noconsole --name StudyHelper ^
   --add-data "templates;templates" --add-data "static;static" ^

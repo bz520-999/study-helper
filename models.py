@@ -63,6 +63,7 @@ def ddl_exists(title, course_id, due_at):
         conn.close()
 
 
+
 def list_ddl_tasks(status=None):
     """
     列出 DDL 任务（按截止时间从近到远排序），顺便带上课程名。
@@ -413,6 +414,43 @@ def set_setting(key, value):
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
+
+
+# ==================== 课程安排（教务课表，队友新增） ====================
+
+def clear_course_schedule():
+    """清空全部课程安排（同步前先清，避免重复）"""
+    db.execute("DELETE FROM course_schedule")
+
+
+def add_course_schedule(course_name, teacher, day, slot, weeks, location, term="", sections=""):
+    """新增一条课程安排"""
+    course_id = find_or_create_course(course_name)
+    return db.execute(
+        "INSERT INTO course_schedule (course_id, course_name, teacher, day, slot, weeks, location, term, sections) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (course_id, course_name, teacher, day, slot, weeks, location, term, sections),
+    )
+
+
+def list_course_schedule():
+    """列出全部课程安排（按课程名排序）"""
+    conn = db.get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM course_schedule ORDER BY course_name"
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def count_course_schedule():
+    """课程安排条数"""
+    conn = db.get_conn()
+    try:
+        return conn.execute("SELECT COUNT(*) FROM course_schedule").fetchone()[0]
+    finally:
+        conn.close()
 
 
 # ==================== 通知（智能体主动提醒） ====================

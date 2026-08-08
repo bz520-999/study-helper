@@ -72,6 +72,67 @@
 
     <!-- 同步结果预览区（抓取完成后出现，勾选后导入 DDL 清单） -->
     <div id="cx-sync-result" style="margin-top: 14px"></div>
+
+    <hr style="margin: 18px 0; border: none; border-top: 1px dashed #ddd;">
+
+    <h2>🏫 教务系统同步（课表 / 考试安排，队友功能）</h2>
+    <p class="empty" style="margin-bottom: 12px">
+        自动登录<strong>教务系统</strong>，抓<strong>课表</strong>（首页「我的课表」）、<strong>考试安排</strong>（变成 DDL 提醒）。
+        账号密码会<strong>加密后</strong>存在你电脑本地，页面永远不显示明文。<br>
+        <span class="muted">支持：南京理工大学（金智统一认证 + 强智教务）。</span>
+    </p>
+
+    <form id="crawler-form" class="upload-form">
+        <div class="form-grid">
+            <label>同步来源
+                <select name="crawl_provider">
+                    <option value="jwxt" {% if crawl_provider == 'jwxt' %}selected{% endif %}>教务系统（南理工）</option>
+                </select>
+            </label>
+            <label>教务账号（学号）
+                <input name="crawl_username" value="{{ crawl_username }}"
+                       placeholder="{{ '已保存：' + crawl_username if crawl_username else '填学号' }}">
+            </label>
+            <label>密码
+                <input type="password" name="crawl_password"
+                       placeholder="{{ '已保存（留空则不变）' if crawl_password_set else '填密码' }}">
+            </label>
+        </div>
+        <label class="checkbox-line">
+            <input type="checkbox" name="crawl_enabled" {% if crawler_enabled %}checked{% endif %}>
+            开启教务爬虫（开启后可用下方按钮手动同步）
+        </label>
+        <div>
+            <button type="submit" class="btn btn-primary">保存教务设置</button>
+            <button type="button" class="btn" id="crawl-sync-btn">立即同步</button>
+            <span id="crawl-msg" class="muted"></span>
+        </div>
+    </form>
+
+    <!-- 使用说明 -->
+    <div class="note" style="margin-top: 14px; font-size: 13px; line-height: 1.9; color: #666;">
+        <strong>📖 使用说明（教务系统南理工）</strong><br>
+        ① 填你的<strong>学号</strong>（教务系统账号）和<strong>密码</strong>（金智统一认证的密码）<br>
+        ② 勾选「开启教务爬虫」→ 点 <strong>保存教务设置</strong><br>
+        ③ 点 <strong>立即同步</strong>，等几秒，下方「同步日志」会显示结果<br>
+        ④ 成功后回到<strong>首页</strong>，就能看到「🗓️ 我的课表」——按周翻动、不同课程不同颜色、左侧标上课时间<br>
+        <span class="muted">同步会自动抓取：课表（存进「我的课表」）、成绩、考试安排（变成 DDL 提醒）。账号密码加密存在本机，页面不显示明文。</span><br>
+        <span class="muted">提示：如果同步提示「需要校园网/VPN」，用下面更稳的「半自动同步」。</span>
+    </div>
+
+    <div class="note" style="margin-top: 14px; border-left: 4px solid #f0c040;">
+        <p id="crawl-paste-note"><strong>💡 半自动同步（在校外也一定能用，绕开验证码和校园网限制）</strong><br>
+            全自动登录偶尔会被验证码、或"认证服务器只在校园网内"挡住，这时用这个最稳：<br>
+            ① 用浏览器打开 <code>http://202.119.81.112:9080/njlgdx/</code> 登录教务系统<br>
+            ② 进入「考试安排」或「作业」页 → 按 <strong>Ctrl+A</strong> 全选 → <strong>Ctrl+C</strong> 复制<br>
+            ③ 粘贴到下面 → 点「提取 DDL」→ 勾选确认后自动进入 DDL 清单</p>
+    </div>
+    <textarea id="crawl-paste-text" rows="3"
+        placeholder="粘贴作业列表文字，例如：高等数学作业，截止2026年8月20日 23:00"></textarea>
+    <div style="margin-top: 10px">
+        <button type="button" class="btn btn-primary" id="crawl-paste-btn">提取 DDL</button>
+    </div>
+    <div id="crawl-paste-result" style="margin-top: 12px"></div>
 </div>
 
 <!-- ==================== 数据备份 ==================== -->
@@ -95,6 +156,9 @@
 
 <div class="card">
     <h2>📜 同步日志</h2>
+    <div id="crawl-logs"
+         data-latest="{% if crawl_logs %}{{ crawl_logs[0]['message'] | e }}{% endif %}"
+         data-latest-status="{% if crawl_logs %}{{ crawl_logs[0]['status'] }}{% endif %}">
     {% for log in crawl_logs %}
     <div class="ddl-row">
         <div>
@@ -106,5 +170,19 @@
     {% else %}
     <p class="empty">还没有同步记录。配置好账号后点「立即同步」或使用「半自动同步」。</p>
     {% endfor %}
+    </div>
+</div>
+
+<!-- ==================== 退出登录（教务，队友功能） ==================== -->
+<div class="card">
+    <h2>🚪 退出登录</h2>
+    <p class="empty" style="margin-bottom: 12px">
+        清除已保存的<strong>教务账号密码</strong>、关闭爬虫开关、并清空同步来的<strong>课表数据</strong>。
+        清除后需要重新填写账号密码并同步。
+    </p>
+    <div>
+        <button type="button" class="btn btn-danger" id="crawler-logout-btn">退出登录</button>
+        <span id="crawler-logout-msg" class="muted"></span>
+    </div>
 </div>
 {% endblock %}
