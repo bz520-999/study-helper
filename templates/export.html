@@ -2,7 +2,7 @@
 {% block title %}导出 · 学习助手 Pro{% endblock %}
 
 {% block content %}
-<h1>📤 导出数据</h1>
+<h1>导出数据</h1>
 
 <div class="card">
     <h2>选择要导出的内容与格式</h2>
@@ -31,8 +31,8 @@
 
     <div class="note">
         <p>💡 <strong>iCal 提醒原理</strong>：导出的 .ics 文件里，每个 DDL 事件都带着
-            「提前 1 天」和「提前 3 小时」两个闹钟。把文件导入手机/电脑的日历 App
-            （iPhone 日历、Google 日历、Outlook、小米/华为日历等），到点日历会自动弹通知——
+            「提前 N 小时」的提醒闹钟（每条任务可自定义，默认提前 24 小时）。把文件导入手机/电脑的日历 App
+            （iPhone 日历、Google 日历、Outlook、小米/华为日历等），到点日历会自动弹通知。
             <strong>即使应用没开也能收到提醒</strong>。</p>
         <p>📋 CSV 用 Excel 打开中文不乱码；JSON 用于备份/换电脑（和下方「导入」配套）；
             Markdown 可用于笔记软件（Obsidian、Typora 等）。</p>
@@ -42,7 +42,7 @@
 
 <!-- 导入：CSV/JSON → DDL 清单（和上方导出配套，换电脑/恢复数据用） -->
 <div class="card">
-    <h2>📥 导入 DDL</h2>
+    <h2>导入 DDL</h2>
     <form method="post" action="{{ url_for('import_ddl') }}" enctype="multipart/form-data" class="search-form">
         <div class="form-grid">
             <label>选择文件（CSV 或 JSON）
@@ -55,7 +55,7 @@
     </form>
     <div class="note">
         <p>💡 支持两种文件：① 本应用导出的 DDL CSV / JSON（最简单：先导出，换电脑再导入）；
-            ② 自己整理的 CSV——第一列任务名、第二列课程、第三列截止时间
+            ② 自己整理的 CSV：第一列任务名、第二列课程、第三列截止时间
             （如 <code>2026-08-20</code> 或 <code>2026-08-20 23:00</code>），可加表头。</p>
         <p>🔁 和已有任务完全相同的（任务名+课程+截止时间）会自动跳过，不会产生重复。</p>
     </div>

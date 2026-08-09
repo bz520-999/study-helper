@@ -710,3 +710,30 @@ function enableNotifications() {
         }
     });
 }
+
+// ==================== 深色模式 ====================
+// 规则：用户手动点过切换按钮就记住选择；没点过则跟随系统偏好。
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    var btn = document.getElementById("theme-toggle");
+    if (btn) {
+        btn.textContent = theme === "dark" ? "☀️ 浅色模式" : "🌙 深色模式";
+    }
+}
+(function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem("theme"); } catch (e) {}
+    if (saved === "dark" || saved === "light") {
+        applyTheme(saved);
+    } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        applyTheme("dark");   // 没手动选过，跟随系统深色
+    }
+    var btn = document.getElementById("theme-toggle");
+    if (btn) {
+        btn.addEventListener("click", function () {
+            var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+            applyTheme(next);
+            try { localStorage.setItem("theme", next); } catch (e) {}
+        });
+    }
+})();
