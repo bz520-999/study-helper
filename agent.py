@@ -11,8 +11,8 @@ import json
 import requests
 
 import config
+import llm
 import models
-import security
 import tools
 
 # ---------- 系统提示词：给大模型"立规矩" ----------
@@ -30,6 +30,7 @@ SYSTEM_PROMPT = """你是"学习助手 Pro"的智能体，一个运行在学生�
 7. 工具查询结果里每条 DDL 末尾的"id=数字"是它的唯一编号。执行完成/修改/删除操作时，必须使用查询结果里的这个 id，绝不自己猜测或编造 id；如果查询结果里没有对应任务，就如实告诉用户找不到。
 8. 当用户用自然语言说时间（如"下周三下午两点""明天晚上9点""3天后"）时，把原话原样填进 add_ddl 的 due_at 参数，工具会自动换算成具体日期。你不需要自己心算日期，也不要擅自修改用户的原话。
 9. 注意区分两个概念：query_schedule 返回的是真实课表（教务同步），query_courses 返回的只是"和 DDL/资料关联过的课程名"，两者不是一回事。用户问"课表/我有什么课/某门课几点上在哪上"时必须用 query_schedule；如果课表工具里查不到用户说的课，就如实告诉用户"课表里没有这门课"，绝不能拿 query_courses 的结果冒充课表，更不能编造上课时间和教室。
+10. 复习相关：查询复习计划用 query_review_plans（用户问"还有哪些没复习"时带 status="pending"）；生成/重新生成用 generate_review_plan（生成后调用 query_review_plans 把具体哪天复习什么展示给用户）；标记完成用 complete_review_plan。清空某任务的复习计划（clear_review_plans）属于删除操作，必须先向用户复述任务名和计划数量并征得明确同意。修改学习画像（update_profile）前先 query_profile 看当前值，把要改的字段复述给用户确认后再改。
 
 当前日期：{today}"""
 
@@ -40,32 +41,13 @@ MAX_TOOL_ROUNDS = 10
 API_KEY_MSG = "还没配置大模型 API Key。请先到「设置」页配置（推荐智谱 GLM-4.7-Flash，完全免费），之后我就能准确回答你的问题了。"
 
 
-def _api_key():
-    """
-    从设置表读 API Key（加密存储，用时解密）。
-    兼容旧数据：如果存的还是明文（解密失败），直接返回并顺手加密回去。
-    """
-    raw = models.get_setting("agent_api_key")
-    if not raw:
-        return ""
-    try:
-        return security.decrypt_text(raw).strip()
-    except Exception:
-        # 旧版本存的明文 → 加密迁移
-        try:
-            models.set_setting("agent_api_key", security.encrypt_text(raw))
-        except Exception:
-            pass
-        return raw.strip()
-
-
 def chat(messages):
     """
     智能体主入口。
     messages: [{"role": "user"|"assistant", "content": "..."}, ...]
     返回 (是否成功, 回复文字)。
     """
-    if not _api_key():
+    if not llm.api_key():
         if config.AGENT_MOCK:
             return True, mock_chat(messages)
         return False, API_KEY_MSG
@@ -79,7 +61,7 @@ def real_chat(messages):
     p = config.AGENT_PROVIDERS.get(provider, config.AGENT_PROVIDERS["zhipu"])
     model = models.get_setting("agent_model") or p["default_model"]
     url = p["base_url"].rstrip("/") + "/chat/completions"
-    headers = {"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {llm.api_key()}", "Content-Type": "application/json"}
 
     # 系统提示词 + 最近 10 条对话（省 token）
     full = [{"role": "system", "content": SYSTEM_PROMPT.format(today=datetime.date.today().isoformat())}]
@@ -127,7 +109,7 @@ def test_connection():
     测试 API Key 和模型配置是否可用（发一条最小的请求，几乎不花钱）。
     返回 (是否成功, 提示文字)。
     """
-    key = _api_key()
+    key = llm.api_key()
     if not key:
         return False, "还没有配置 API Key，请先在上方填写。"
     provider = models.get_setting("agent_provider") or "zhipu"

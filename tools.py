@@ -5,8 +5,12 @@
 大模型看完用户的话，会自己决定调用哪个工具、填什么参数。
 """
 
+import json
+import re
+
 import autotag
 import ddl_parser
+import llm
 import models
 import reminder
 import search
@@ -46,13 +50,42 @@ def _materials_text(keyword="", course="", tag=""):
     return "；".join(parts)
 
 
-def _review_text():
+def _review_text(status=""):
+    """复习计划按 DDL 分组输出（好读、信息全），可按完成状态过滤"""
     plans = models.list_review_plans()
     if not plans:
-        return "还没有生成复习计划，可以让我为某条 DDL 生成复习清单。"
-    return "；".join(
-        f"{p['plan_date']} {p['content']}（{'已完成' if p['done'] else '未完成'}）" for p in plans
-    )
+        return "还没有复习计划，可以让我为某条 DDL 生成复习清单。"
+    if status:
+        done_flag = 1 if status in ("done", "已完成", "完成") else 0
+        plans = [p for p in plans if p["done"] == done_flag]
+        if not plans:
+            return "没有" + ("已完成" if done_flag else "未完成") + "的复习计划。"
+    groups = {}
+    for p in plans:
+        groups.setdefault(p["ddl_id"],
+            {"title": p["ddl_title"], "due": p["ddl_due"], "course": p["course_name"], "plans": []})
+        groups[p["ddl_id"]]["plans"].append(p)
+    out = []
+    for g in groups.values():
+        lines = [f"{g['title']}（{g['course'] or '未分类'}，截止 {g['due']}）："]
+        for p in g["plans"]:
+            mark = "已完成" if p["done"] else "未完成"
+            lines.append(f"  {p['plan_date']} {p['content']}（{mark}，plan_id={p['id']}）")
+        out.append("\n".join(lines))
+    return "\n".join(out)
+
+
+def _profile_text():
+    """学习画像 → 好读的文字（复习节奏的定制依据）"""
+    if models.get_setting("profile_done") != "1":
+        return "还没填写学习画像，现在用的是默认规则：考前第 14、7、3、1 天各复习一次，7 天以内每天一次。"
+    n = models.get_setting("profile_nickname") or "未设置"
+    hours = models.get_setting("profile_hours") or "1"
+    lead = models.get_setting("profile_lead_days") or "14"
+    rhythm = models.get_setting("profile_rhythm") or "每天"
+    weak = models.get_setting("profile_weak") or "（无）"
+    return (f"学习画像：昵称 {n}；每天可投入 {hours} 小时；提前 {lead} 天开始复习；"
+            f"复习节奏 {rhythm}；薄弱科目 {weak}。")
 
 
 def _courses_text():
@@ -171,12 +204,143 @@ def _delete_ddl(ddl_id):
 
 
 def _generate_review(ddl_id):
+    """为 DDL 生成复习计划：排期按画像规则，内容由智能体定制（失败降级默认模板）"""
     info = models.generate_review_plan(ddl_id)
     if info is None:
         return f"找不到 id={ddl_id} 的 DDL。"
-    if info[0] == 0:
+    count, rows = info
+    if count == 0:
         return "这条 DDL 已过期或今天截止，没有可安排的复习日。"
-    return f"已为这条 DDL 生成 {info[0]} 条复习计划。"
+    custom = _custom_review_contents(rows)
+    if custom:
+        for r in rows:
+            if r["plan_date"] in custom:
+                models.db.execute(
+                    "UPDATE review_plans SET content = ? WHERE id = ?",
+                    (custom[r["plan_date"]], r["id"]),
+                )
+        return f"已为这条 DDL 生成 {count} 条复习计划，内容按你的课程和资料定制好了。"
+    return f"已为这条 DDL 生成 {count} 条复习计划（智能体暂时不可用，用了默认复习内容）。"
+
+
+def _custom_review_contents(rows):
+    """
+    调大模型为每个复习日写具体可执行的复习内容。
+    成功返回 {复习日期: 内容}；任何失败（没配 Key / 网络 / 解析失败）返回 None，
+    调用方会降级使用默认模板，绝不影响生成功能。
+    """
+    if not llm.api_key():
+        return None
+    ddl = rows[0]
+    # 课程名 + 关联资料 + DDL 标题/截止（给模型当素材）
+    # 注意：rows 来自 review_plans 表（只有 id/ddl_id/plan_date/content/done），
+    # 标题和截止时间要另外查 ddl_tasks
+    course_name, materials, ddl_title, ddl_due = "", [], "", ""
+    try:
+        conn = models.db.get_conn()
+        ddl_row = conn.execute("SELECT * FROM ddl_tasks WHERE id = ?", (ddl["ddl_id"],)).fetchone()
+        if ddl_row:
+            ddl_title = ddl_row["title"]
+            ddl_due = ddl_row["due_at"]
+            if ddl_row["course_id"]:
+                c = conn.execute("SELECT name FROM courses WHERE id = ?", (ddl_row["course_id"],)).fetchone()
+                if c:
+                    course_name = c["name"]
+                materials = [m["title"] for m in conn.execute(
+                    "SELECT title FROM materials WHERE course_id = ? ORDER BY created_at",
+                    (ddl_row["course_id"],)).fetchall()]
+        conn.close()
+    except Exception:
+        pass
+    dates = "、".join(r["plan_date"] for r in rows)
+    materials_text = "；".join(materials) if materials else "（暂无资料）"
+    prompt = [
+        {"role": "system", "content": (
+            "你是经验丰富的学习规划师，为学生的考前复习安排具体可执行的复习内容。"
+            "要求：只输出一个 JSON 数组，格式 [{\"date\": \"2026-08-16\", \"content\": \"复习内容\"}, ...]，"
+            "数组长度和给出的复习日期数量一致，每个日期一条。"
+            "content 用中文写 30-60 字，必须具体可执行：写清复习哪个章节/哪份资料/做什么练习；"
+            "离截止日越近的内容越精（做真题、错题），越远越粗（通读、搭框架）；每条内容不能一样。"
+        )},
+        {"role": "user", "content": (
+            f"任务：{ddl_title or '（未命名任务）'}，截止 {ddl_due or '（未知）'}。\n"
+            f"课程：{course_name or '未分类'}。\n关联资料：{materials_text}。\n"
+            f"复习日期：{dates}。"
+        )},
+    ]
+    try:
+        text = llm.call(prompt, max_tokens=2000)
+    except Exception:
+        return None
+    return _parse_review_json(text)
+
+
+def _parse_review_json(text):
+    """模型可能包一层 ```json 代码块，逐层尝试解析；解析失败返回 None（降级）"""
+    for s in (text.strip(), text.strip().strip("`"),
+              re.sub(r"^```json\s*", "", text.strip()).rstrip("`").strip()):
+        try:
+            data = json.loads(s)
+        except (ValueError, TypeError):
+            continue
+        if (isinstance(data, list) and len(data) > 0
+                and all(isinstance(x, dict) and x.get("date") and x.get("content") for x in data)):
+            return {x["date"]: x["content"].strip() for x in data if x["content"].strip()}
+    return None
+
+
+def _find_review_plan(plan_id):
+    for p in models.list_review_plans():
+        if p["id"] == plan_id:
+            return p
+    return None
+
+
+def _set_review_done(plan_id, done):
+    p = _find_review_plan(plan_id)
+    if not p:
+        return f"找不到 id={plan_id} 的复习计划。"
+    if (p["done"] == 1) == done:
+        return f"这条复习计划本来就是{'完成' if done else '未完成'}状态。"
+    models.toggle_review_plan(plan_id)
+    return f"已把复习计划标为{'完成' if done else '未完成'}：{p['plan_date']} {p['content']}"
+
+
+def _clear_review(ddl_id):
+    found = [p for p in models.list_review_plans() if p["ddl_id"] == ddl_id]
+    if not found:
+        return f"id={ddl_id} 的这条 DDL 没有复习计划。"
+    models.clear_review_plans(ddl_id)
+    return f"已清空这条 DDL 的全部 {len(found)} 条复习计划。"
+
+
+def _update_profile(nickname="", hours="", lead_days="", rhythm="", weak=""):
+    """只更新用户提到的画像字段，其余保持不变"""
+    try:
+        if hours:
+            hours = str(float(hours))
+            if hours not in ("0.5", "1.0", "2.0", "3.0", "4.0"):
+                return "每天可投入时间只能是 0.5 / 1 / 2 / 3 / 4 小时。"
+        if lead_days:
+            lead = int(lead_days)
+            if lead not in (7, 14, 30, 60):
+                return "提前开始天数只能是 7 / 14 / 30 / 60 天。"
+        if rhythm and rhythm not in ("每天", "隔天"):
+            return "复习节奏只能是「每天」或「隔天」。"
+    except (ValueError, TypeError):
+        return "时间或天数填的数字不对，请用 7 / 14 / 30 / 60 这类整数。"
+    if nickname:
+        models.set_setting("profile_nickname", nickname)
+    if hours:
+        models.set_setting("profile_hours", hours)
+    if lead_days:
+        models.set_setting("profile_lead_days", str(lead))
+    if rhythm:
+        models.set_setting("profile_rhythm", rhythm)
+    if weak is not None:
+        models.set_setting("profile_weak", weak)
+    models.set_setting("profile_done", "1")   # 填过就算完成画像
+    return f"已更新学习画像。当前：{_profile_text()}"
 
 
 # ==================== 工具清单 ====================
@@ -222,9 +386,58 @@ TOOLS = [
     },
     {
         "name": "query_review_plans",
-        "description": "查询复习计划。当用户问\"复习\"相关问题时调用。",
+        "description": "查询复习计划（按任务分组展示，含每条计划的日期、内容和完成状态）。当用户问\"复习\"相关问题时调用。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "description": "可选：只看某状态，填 done 或 pending。如\"我还有哪些没复习\"→ pending"},
+            },
+        },
+        "handler": lambda status="": _review_text(status),
+    },
+    {
+        "name": "query_profile",
+        "description": "查询学习画像（复习节奏的定制依据：每天可投入时间、提前几天开始复习、节奏、薄弱科目）。当用户问\"我的画像/复习设置/复习节奏\"时调用。",
         "parameters": {"type": "object", "properties": {}},
-        "handler": lambda **kw: _review_text(),
+        "handler": lambda **kw: _profile_text(),
+    },
+    {
+        "name": "update_profile",
+        "description": "修改学习画像（影响之后生成的复习计划节奏）。只填用户提到的字段，没提到的保持不变。修改前建议先 query_profile 看看当前值，并把改动复述给用户确认。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "nickname": {"type": "string", "description": "昵称（可选）"},
+                "hours": {"type": "string", "description": "每天可投入复习时间：0.5 / 1 / 2 / 3 / 4（可选）"},
+                "lead_days": {"type": "string", "description": "提前几天开始复习：7 / 14 / 30 / 60（可选）"},
+                "rhythm": {"type": "string", "description": "复习节奏：每天 或 隔天（可选）"},
+                "weak": {"type": "string", "description": "薄弱科目，逗号分隔，会多安排复习（可选；传空字符串=清空）"},
+            },
+        },
+        "handler": _update_profile,
+    },
+    {
+        "name": "complete_review_plan",
+        "description": "把一条复习计划标记为完成，或取消完成（标错了时）。需要先查询得到 plan_id。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "integer", "description": "复习计划的 id"},
+                "done": {"type": "boolean", "description": "true=标记完成；false=取消完成"},
+            },
+            "required": ["plan_id", "done"],
+        },
+        "handler": _set_review_done,
+    },
+    {
+        "name": "clear_review_plans",
+        "description": "清空某条 DDL 的全部复习计划（重新生成时也会覆盖）。危险操作：调用前必须先向用户复述要清空的任务名并征得明确同意。",
+        "parameters": {
+            "type": "object",
+            "properties": {"ddl_id": {"type": "integer", "description": "DDL 的 id"}},
+            "required": ["ddl_id"],
+        },
+        "handler": _clear_review,
     },
     {
         "name": "add_ddl",

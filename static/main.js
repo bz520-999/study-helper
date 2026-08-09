@@ -53,10 +53,50 @@ var chatBox = document.getElementById("chat-box");
 if (chatInput && chatSend && chatBox) {
     var chatWelcome = document.getElementById("chat-welcome");
 
+    // ============================================
+    // 聊天消息美化：把模型回答里的 Markdown 符号渲染成真实格式
+    // **加粗** → 加粗、# 标题 → 标题、- 列表 → 列表、`代码` → 等宽字体
+    // 安全顺序：先转义 HTML 再替换符号，所以 <script> 之类不可能被注入
+    // ============================================
+    function escapeHtml(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function mdToHtml(text) {
+        if (!text) return "";
+        var esc = escapeHtml(text);                       // 1. 先转义，防注入
+        esc = esc.replace(/```([\s\S]*?)```/g,             // 2. 代码块 ```…```
+            function (m, code) { return "<pre><code>" + code.trim() + "</code></pre>"; });
+        esc = esc.replace(/`([^`\n]+)`/g, "<code>$1</code>");           // 3. 行内代码
+        esc = esc.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,     // 4. 链接 [文字](网址)
+            '<a href="$2" target="_blank" rel="noopener">$1</a>');
+        esc = esc.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")   // 5. 粗体 **x**
+                 .replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
+        esc = esc.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")     // 6. 斜体 *x*
+                 .replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+        esc = esc.replace(/^### (.*)$/gm, "<h6>$1</h6>")                 // 7. 标题（从大到小）
+                 .replace(/^## (.*)$/gm, "<h5>$1</h5>")
+                 .replace(/^# (.*)$/gm, "<h4>$1</h4>");
+        esc = esc.replace(/(?:^|\n)[ \t]*[-*+][ \t]+[^\n]*(?:\n[ \t]*[-*+][ \t]+[^\n]*)*/g,  // 8. 无序列表
+            function (m) {
+                var items = m.trim().replace(/^[ \t]*[-*+][ \t]+/, "")   // 剥掉首项标记
+                                 .split(/\n[ \t]*[-*+][ \t]+/).map(function (s) { return s.trim(); });
+                return "<ul><li>" + items.join("</li><li>") + "</li></ul>";
+            });
+        esc = esc.replace(/(?:^|\n)[ \t]*\d+[.、][ \t]+[^\n]*(?:\n[ \t]*\d+[.、][ \t]+[^\n]*)*/g,  // 9. 有序列表
+            function (m) {
+                var items = m.trim().replace(/^[ \t]*\d+[.、][ \t]+/, "")   // 剥掉首项编号
+                                 .split(/\n[ \t]*\d+[.、][ \t]+/).map(function (s) { return s.trim(); });
+                return "<ol><li>" + items.join("</li><li>") + "</li></ol>";
+            });
+        esc = esc.replace(/\n/g, "<br>");                 // 10. 换行
+        return esc;
+    }
+
     function appendMsg(role, text) {
         var div = document.createElement("div");
         div.className = "chat-msg " + role;
-        div.textContent = text;   // 用 textContent 防止 HTML 注入
+        div.innerHTML = mdToHtml(text);   // 先转义再渲染 markdown，安全
         chatBox.appendChild(div);
         chatBox.scrollTop = chatBox.scrollHeight;
         return div;

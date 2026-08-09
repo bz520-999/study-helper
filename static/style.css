@@ -602,6 +602,14 @@ textarea:focus {
     padding: 8px 4px;
     display: flex;
     flex-direction: column;
+    /* 作业本横线纸底（纸感签名）：浅色细横线，气泡之间露出横线像本子上贴便签 */
+    background:
+        repeating-linear-gradient(to bottom,
+            transparent 0, transparent 27px,
+            var(--border-soft) 27px, var(--border-soft) 28px),
+        var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-surface);
 }
 .chat-msg {
     max-width: 82%;
@@ -613,12 +621,54 @@ textarea:focus {
     white-space: pre-wrap;
     word-break: break-word;
 }
-.chat-msg.user { background: var(--primary); color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+/* 用户气泡：墨蓝钢笔水色（深色下文字用深色，对比度达标） */
+.chat-msg.user {
+    background: var(--primary);
+    color: #fff;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+    border: 1px solid var(--primary);
+}
 [data-theme="dark"] .chat-msg.user { color: #131a24; }   /* 同上：深色下主色较亮，文字用深色 */
-.chat-msg.agent { background: var(--surface-3); border-bottom-left-radius: 4px; }
+/* 智能体气泡：白纸片 + 细边框 + 轻投影（深色下投影加深） */
+.chat-msg.agent {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(58, 55, 47, 0.06);
+}
+[data-theme="dark"] .chat-msg.agent { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
 .chat-typing { color: var(--muted); font-size: 13px; }
 .chat-input-row { display: flex; gap: 8px; margin-top: 12px; }
 .chat-input-row input { flex: 1; }
+
+/* 消息里的 Markdown 渲染样式（**加粗**、`代码`、列表等符号不再裸露） */
+.chat-msg strong { font-weight: 700; }
+.chat-msg em { font-style: italic; }
+.chat-msg code {
+    background: var(--surface-3);
+    border: 1px solid var(--border-soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    white-space: pre-wrap;
+}
+.chat-msg pre {
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    padding: 10px 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+    white-space: pre-wrap;
+}
+.chat-msg pre code { background: none; border: none; padding: 0; }
+.chat-msg ul, .chat-msg ol { margin: 4px 0; padding-left: 20px; }
+.chat-msg li { margin: 2px 0; }
+.chat-msg h4 { font-size: 15px; font-weight: 700; margin: 10px 0 4px; }
+.chat-msg h5 { font-size: 14px; font-weight: 700; margin: 8px 0 4px; }
+.chat-msg h6 { font-size: 13.5px; font-weight: 700; margin: 8px 0 4px; }
+.chat-msg a { color: var(--primary); text-decoration: underline; }
 
 /* 通知横幅 */
 .notify-bar {
