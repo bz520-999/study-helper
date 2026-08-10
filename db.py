@@ -46,6 +46,7 @@ def init_db():
         status TEXT NOT NULL DEFAULT 'pending',  -- pending=未完成 done=已完成
         source TEXT NOT NULL DEFAULT 'manual',   -- 来源：manual=手动录入
         note TEXT,
+        is_quiz INTEGER NOT NULL DEFAULT 0,   -- 是否课堂小测（勾选后映射到主表）
         created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
@@ -167,6 +168,14 @@ def init_db():
                     ELSE 0                           -- 都关 = 不提醒
                 END
             """)
+    except Exception:
+        pass
+
+    # ---- 课堂小测标记迁移（2026-08-11）：is_quiz 列 ----
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(ddl_tasks)")}
+        if "is_quiz" not in cols:
+            conn.execute("ALTER TABLE ddl_tasks ADD COLUMN is_quiz INTEGER NOT NULL DEFAULT 0")
     except Exception:
         pass
     conn.commit()

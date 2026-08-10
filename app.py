@@ -94,16 +94,31 @@ def index():
         for s in schedule_rows
     ], ensure_ascii=False)
 
-    # 考试数据（pending DDL 里含"考试"的），叠加到课表
+    # 考试/课堂小测数据（叠加到课表）：
+    #  - 标题含"考试"的（教务考试安排自动进来）
+    #  - 手动标记了"课堂小测"的 DDL
     exam_json = json.dumps([
         {
             "title": t["title"],
             "due_at": t["due_at"],
             "course": t["course_name"] or "",
             "location": t["note"] or "",
+            "kind": "quiz" if (t["is_quiz"] if "is_quiz" in t.keys() else 0) else "exam",
         }
         for t in tasks
-        if "考试" in (t["title"] or "")
+        if ("考试" in (t["title"] or "")) or (t["is_quiz"] if "is_quiz" in t.keys() else 0)
+    ], ensure_ascii=False)
+
+    # 全部未完成 DDL（用于首页「每日DDL清单」可视化）
+    ddl_json = json.dumps([
+        {
+            "id": t["id"],
+            "title": t["title"],
+            "due_at": t["due_at"],
+            "course": t["course_name"] or "",
+            "note": t["note"] or "",
+        }
+        for t in tasks
     ], ensure_ascii=False)
 
 
@@ -122,6 +137,7 @@ def index():
         schedule_count=models.count_course_schedule(),
         schedule_json=schedule_json,
         exam_json=exam_json,
+        ddl_json=ddl_json,
         semester_start=models.get_setting("semester_start") or "2026-09-07",
     )
 
@@ -156,7 +172,8 @@ def ddl_add():
     if models.ddl_exists(title, course_id, due_at):
         flash("这条 DDL 之前已经记过了（相同任务名+课程+截止时间），没有重复添加", "warn")
         return redirect(url_for("ddl_list"))
-    models.add_ddl(title, course_id, due_at, note, remind_hours)
+    is_quiz = 1 if request.form.get("is_quiz") else 0   # 是否课堂小测
+    models.add_ddl(title, course_id, due_at, note, remind_hours, is_quiz=is_quiz)
     flash("已保存！", "ok")
     return redirect(url_for("ddl_list"))
 
@@ -190,6 +207,7 @@ def api_ddl_get(task_id):
         "due_at": task["due_at"],
         "note": task["note"] or "",
         "remind_before_hours": task["remind_before_hours"],
+        "is_quiz": task["is_quiz"] if "is_quiz" in task.keys() else 0,
     }
 
 
@@ -210,8 +228,9 @@ def ddl_edit(task_id):
 
     due_at = due_at.replace("T", " ")
     course_id = models.find_or_create_course(course_name)
+    is_quiz = 1 if request.form.get("is_quiz") else 0
     models.update_ddl(task_id, title=title, course_id=course_id, due_at=due_at,
-                      note=note, remind_before_hours=remind_hours)
+                      note=note, remind_before_hours=remind_hours, is_quiz=is_quiz)
     return {"ok": True}
 
 

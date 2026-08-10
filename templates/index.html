@@ -107,7 +107,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 <!-- 我的课表（教务同步，可视化周课表） -->
 <section class="card">
-    <h2>我的课表</h2>
+    <h2>我的课表 <span class="muted" style="font-size:12px;font-weight:normal">点击日期查看 DDL</span></h2>
 
     {% if schedule %}
     <div class="schedule-toolbar">
@@ -120,16 +120,29 @@ document.addEventListener("DOMContentLoaded", function () {
     <div class="schedule-wrap">
         <table class="schedule-grid" id="schedule-grid">
             <thead>
-                <tr>
+                <tr id="sched-date-row">
+                    <th class="sched-time-col"></th>
+                    <th class="sched-date" data-day="0">·</th><th class="sched-date" data-day="1">·</th><th class="sched-date" data-day="2">·</th>
+                    <th class="sched-date" data-day="3">·</th><th class="sched-date" data-day="4">·</th><th class="sched-date" data-day="5">·</th><th class="sched-date" data-day="6">·</th>
+                </tr>
+                <tr id="sched-day-row">
                     <th class="sched-time-col">节次</th>
-                    <th>星期一</th><th>星期二</th><th>星期三</th>
-                    <th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th>
+                    <th data-day="0">星期一</th><th data-day="1">星期二</th><th data-day="2">星期三</th>
+                    <th data-day="3">星期四</th><th data-day="4">星期五</th><th data-day="5">星期六</th><th data-day="6">星期日</th>
                 </tr>
             </thead>
             <tbody id="schedule-body">
                 <!-- 由 JS 动态渲染 -->
             </tbody>
         </table>
+        <!-- 每列一个 DDL 覆盖层（多天可同时打开） -->
+        <div class="ddl-overlay" id="ddl-overlay-0" style="display:none;"></div>
+        <div class="ddl-overlay" id="ddl-overlay-1" style="display:none;"></div>
+        <div class="ddl-overlay" id="ddl-overlay-2" style="display:none;"></div>
+        <div class="ddl-overlay" id="ddl-overlay-3" style="display:none;"></div>
+        <div class="ddl-overlay" id="ddl-overlay-4" style="display:none;"></div>
+        <div class="ddl-overlay" id="ddl-overlay-5" style="display:none;"></div>
+        <div class="ddl-overlay" id="ddl-overlay-6" style="display:none;"></div>
     </div>
     <p class="muted" id="sched-legend" style="margin-top:8px"></p>
 
@@ -226,6 +239,24 @@ document.addEventListener("DOMContentLoaded", function () {
     // 渲染
     var curWeek = 1;
     var maxWeek = 20;
+    // 当前周起始日期（学期第1周周一 + (curWeek-1)周）
+    function weekStartDate() {
+        var ss = (semesterStart||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!ss) return new Date(2026, 8, 7);
+        var s = new Date(parseInt(ss[1]), parseInt(ss[2])-1, parseInt(ss[3]));
+        s.setDate(s.getDate() + (curWeek - 1) * 7);
+        return s;
+    }
+    // 更新课表日期行（月/日）
+    function updateDateRow() {
+        var start = weekStartDate();
+        var ths = document.querySelectorAll('#sched-date-row .sched-date');
+        for (var i = 0; i < 7 && i < ths.length; i++) {
+            var d = new Date(start);
+            d.setDate(start.getDate() + i);
+            ths[i].textContent = (d.getMonth() + 1) + "/" + d.getDate();
+        }
+    }
     function renderSchedule() {
         var body = document.getElementById("schedule-body");
         var html = "";
@@ -316,15 +347,18 @@ document.addEventListener("DOMContentLoaded", function () {
                         '<div class="sched-course-loc">' + course.location + '</div>' +
                         '</div>';
                 }
-                // 考试叠加（红色块，显示在课程块之上/旁边）
+                // 考试/课堂小测叠加（考试红块、小测紫块）
                 if (cellExams && cellExams.length) {
                     for (var exi = 0; exi < cellExams.length; exi++) {
                         var exam = cellExams[exi];
                         var tM = (exam.due_at||"").match(/(\d{1,2}):(\d{2})/);
                         var tStr = tM ? (tM[1] + ":" + tM[2]) : "";
-                        html += '<div class="sched-exam" title="考试：' + exam.title +
+                        var isQuiz = exam.kind === "quiz";
+                        var examColor = isQuiz ? "#8e71b1" : "#e74c3c";
+                        var examLabel = isQuiz ? "小测" : "考试";
+                        html += '<div class="sched-exam" style="background:' + examColor + '" title="' + (isQuiz ? '课堂小测：' : '考试：') + exam.title +
                             (exam.location ? '｜' + exam.location : '') + '">' +
-                            '<span class="sched-exam-label">考试</span> ' +
+                            '<span class="sched-exam-label">' + examLabel + '</span> ' +
                             '<span class="sched-exam-title">' + exam.title + '</span>' +
                             (tStr ? ' <span class="sched-exam-time">' + tStr + '</span>' : '') +
                             '</div>';
@@ -336,6 +370,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         body.innerHTML = html;
         document.getElementById("sched-week-label").textContent = "第 " + curWeek + " 周";
+        updateDateRow();
     }
 
     // 大节 → 小节范围
@@ -370,5 +405,181 @@ document.addEventListener("DOMContentLoaded", function () {
     {% else %}
     <p class="empty">还没有课表数据。去 <a href="{{ url_for('settings_page') }}">设置</a> 页同步教务系统即可自动导入。</p>
     {% endif %}
+
+    <!-- DDL 详情弹窗 -->
+    <div class="ddl-detail-mask" id="ddl-detail-mask" style="display:none">
+        <div class="ddl-detail-box" id="ddl-detail-box"></div>
+    </div>
+
+    <script>
+    // ============ 每日 DDL 清单（独立于课表脚本，可单独工作） ============
+    var rawDdl = {{ ddl_json | safe }};
+    var DDL_COLOR = "#8e71b1";      // 小横杠颜色
+    var DDL_TRAIL_HOURS = 4;        // 拖尾小时数
+    var DAY_START = 0;              // 时间轴 00:00 开始
+    var DAY_END = 24;               // 到 24:00
+    var ddlSemesterStart = "{{ semester_start }}";  // 学期起始，用于周次换算
+    var ddlCurWeek = 1;             // 当前显示周（与课表同步）
+
+    // 解析 "YYYY-MM-DD HH:MM" → {y,m,d,h,min}
+    function parseDue(str) {
+        var m = (str||"").match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/);
+        if (!m) return null;
+        return {y:+m[1], mo:+m[2]-1, d:+m[3], h:+m[4], min:+m[5]};
+    }
+
+    // 当前周起始日期（独立实现；若课表脚本存在则跟随它的 curWeek）
+    function ddlWeekStartDate() {
+        var wk = ddlCurWeek;
+        try { if (typeof curWeek !== "undefined") wk = curWeek; } catch (e) {}
+        var ss = (ddlSemesterStart||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
+        var s = ss ? new Date(+ss[1], +ss[2]-1, +ss[3]) : new Date(2026, 8, 7);
+        s.setDate(s.getDate() + (wk - 1) * 7);
+        return s;
+    }
+
+    // 渲染 DDL 覆盖层（每列独立开合，可同时打开多天）
+    var openDays = {};   // { dayIdx: true }  已打开的列
+    function renderDdlBoard() {
+        var start = ddlWeekStartDate();
+        var grid = document.getElementById("schedule-grid");
+        var gridH = grid ? grid.offsetHeight : 600;
+        var pxPerHour = (gridH - 40) / 24;
+        var dayDate0 = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        var topPad = 6;
+
+        // 遍历 7 天，只渲染打开的列
+        for (var day = 0; day < 7; day++) {
+            var ov = document.getElementById("ddl-overlay-" + day);
+            if (!ov) continue;
+            if (!openDays[day]) {
+                ov.style.display = "none";
+                continue;
+            }
+            // 定位该列
+            var th = document.querySelector('#sched-day-row th[data-day="' + day + '"]');
+            if (!th) continue;
+            var thRect = th.getBoundingClientRect();
+            var gridRect = grid.getBoundingClientRect();
+            var theadH = grid.querySelector('thead').offsetHeight;
+            ov.style.left = (thRect.left - gridRect.left + 2) + 'px';
+            ov.style.width = (thRect.width - 4) + 'px';
+            ov.style.top = theadH + 'px';
+            ov.style.height = (gridH - theadH) + 'px';
+            ov.style.display = 'block';
+
+            // 渲染该天的 DDL
+            var html = '';
+            var selAbs0 = day * 24 * 60;
+            var selAbsEnd = selAbs0 + 24 * 60;
+            for (var di = 0; di < rawDdl.length; di++) {
+                var ddl = rawDdl[di];
+                var due = parseDue(ddl.due_at);
+                if (!due) continue;
+                var dueDate = new Date(due.y, due.mo, due.d);
+                var dueAbs = Math.floor((dueDate - dayDate0) / 60000) + due.h * 60 + due.min;
+                var trailStartAbs = dueAbs - DDL_TRAIL_HOURS * 60;
+                var trailEndAbs = dueAbs;
+                var ovStart = Math.max(trailStartAbs, selAbs0);
+                var ovEnd = Math.min(trailEndAbs, selAbsEnd);
+                var cutoffHere = (trailEndAbs >= selAbs0 && trailEndAbs < selAbsEnd) ||
+                                 (trailEndAbs === selAbs0 && due.h === 0 && due.min === 0);
+                if (ovEnd >= ovStart) {
+                    var ovTop = (ovStart - selAbs0) / 60 * pxPerHour + topPad;
+                    var ovH = Math.max(2, (ovEnd - ovStart) / 60 * pxPerHour);
+                    if (cutoffHere) {
+                        var barTop = Math.max(topPad, (trailEndAbs - selAbs0) / 60 * pxPerHour + topPad);
+                        var title = ddl.title || "未命名";
+                        var shown = title.length > 6 ? title.slice(0, 6) + "…" : title;
+                        html += '<div class="ddl-bar" data-id="' + ddl.id + '" style="top:' + barTop + 'px;background:' + DDL_COLOR + '" title="' + escapeHtml(ddl.title) + '">' + escapeHtml(shown) + '</div>';
+                        html += '<div class="ddl-trail" style="top:' + ovTop + 'px;height:' + ovH + 'px;background:' + DDL_COLOR + '" data-id="' + ddl.id + '"></div>';
+                    } else {
+                        html += '<div class="ddl-trail" style="top:' + ovTop + 'px;height:' + ovH + 'px;background:' + DDL_COLOR + '" data-id="' + ddl.id + '"></div>';
+                    }
+                }
+            }
+            ov.innerHTML = html;
+            // 绑定点击详情
+            ov.querySelectorAll('.ddl-bar, .ddl-trail').forEach(function (el) {
+                el.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var id = el.getAttribute('data-id');
+                    var ddl = rawDdl.find(function (d) { return String(d.id) === String(id); });
+                    if (ddl) showDdlDetail(ddl);
+                });
+            });
+            // 触发翻转动画
+            ov.classList.remove('ddl-flip-anim');
+            void ov.offsetWidth;
+            ov.classList.add('ddl-flip-anim');
+        }
+    }
+
+    // 点击课表的日期/星期 → 切换该天的 DDL 覆盖层（打开/关闭都靠点当天）
+    function bindDayClick() {
+        document.querySelectorAll('#sched-date-row th[data-day], #sched-day-row th[data-day]').forEach(function (th) {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', function () {
+                var d = parseInt(th.getAttribute('data-day'));
+                if (isNaN(d)) return;
+                // 切换该列开合（不影响其他列）
+                if (openDays[d]) {
+                    delete openDays[d];          // 关闭这天
+                } else {
+                    openDays[d] = true;          // 打开这天
+                }
+                renderDdlBoard();
+                highlightSelectedDay();
+            });
+        });
+    }
+    // 高亮所有打开的列
+    function highlightSelectedDay() {
+        document.querySelectorAll('#sched-date-row th[data-day], #sched-day-row th[data-day]').forEach(function (th) {
+            var d = parseInt(th.getAttribute('data-day'));
+            if (openDays[d]) {
+                th.classList.add('sched-day-selected');
+            } else {
+                th.classList.remove('sched-day-selected');
+            }
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // 详情弹窗
+    function showDdlDetail(ddl) {
+        var box = document.getElementById("ddl-detail-box");
+        var due = parseDue(ddl.due_at);
+        var dueStr = due ? (due.y + "-" + (due.mo+1) + "-" + due.d + " " + (due.h<10?"0":"")+due.h + ":" + (due.min<10?"0":"")+due.min) : ddl.due_at;
+        box.innerHTML = '<div class="ddl-detail-title">' + escapeHtml(ddl.title) + '</div>' +
+            '<div class="ddl-detail-row">⏰ 截止：' + dueStr + '</div>' +
+            (ddl.course ? '<div class="ddl-detail-row">📚 课程：' + escapeHtml(ddl.course) + '</div>' : '') +
+            (ddl.note ? '<div class="ddl-detail-row">📝 备注：' + escapeHtml(ddl.note) + '</div>' : '') +
+            '<button class="btn btn-small" onclick="closeDdlDetail()">关闭</button>';
+        document.getElementById("ddl-detail-mask").style.display = "flex";
+    }
+    function closeDdlDetail() {
+        document.getElementById("ddl-detail-mask").style.display = "none";
+    }
+    document.getElementById("ddl-detail-mask").addEventListener("click", function (e) {
+        if (e.target === this) closeDdlDetail();
+    });
+
+    renderDdlBoard();
+    bindDayClick();
+    highlightSelectedDay();
+    // 翻周时清空打开的覆盖层（列的日期变了）再同步
+    function syncDdlBoard() {
+        openDays = {};
+        renderDdlBoard();
+        highlightSelectedDay();
+    }
+    document.getElementById("sched-prev").addEventListener("click", function () { setTimeout(syncDdlBoard, 10); });
+    document.getElementById("sched-next").addEventListener("click", function () { setTimeout(syncDdlBoard, 10); });
+    document.getElementById("sched-today").addEventListener("click", function () { setTimeout(syncDdlBoard, 10); });
+    </script>
 </section>
 {% endblock %}
