@@ -1186,3 +1186,24 @@ textarea:focus {
     60%  { transform: rotateX(8deg); }
     100% { transform: rotateX(0deg); opacity: 1; }
 }
+
+/* ---------- 同步日志折叠（设置页） ---------- */
+.crawl-more {
+    margin-top: 8px;
+    border-top: 1px dashed var(--border-soft);
+    padding-top: 6px;
+}
+.crawl-more summary {
+    cursor: pointer;
+    list-style: none;                 /* 隐藏浏览器默认小三角，用自定义箭头 */
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 2px;
+    user-select: none;
+}
+.crawl-more summary::-webkit-details-marker { display: none; }
+.crawl-more summary::before { content: "▸ "; font-size: 11px; }
+.crawl-more[open] summary::before { content: "▾ "; }
+.crawl-more summary:hover { text-decoration: underline; }
+.crawl-more .ddl-row { margin-bottom: 6px; }

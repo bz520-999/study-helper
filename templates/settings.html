@@ -159,7 +159,8 @@
     <div id="crawl-logs"
          data-latest="{% if crawl_logs %}{{ crawl_logs[0]['message'] | e }}{% endif %}"
          data-latest-status="{% if crawl_logs %}{{ crawl_logs[0]['status'] }}{% endif %}">
-    {% for log in crawl_logs %}
+    {% if crawl_logs %}
+    {% for log in crawl_logs[:3] %}
     <div class="ddl-row">
         <div>
             {% if log['status'] == 'success' %}✅{% elif log['status'] == 'failed' %}❌{% else %}⏭️{% endif %}
@@ -167,9 +168,24 @@
             <div class="file-meta">{{ log['created_at'] }}（{{ log['source'] }}）</div>
         </div>
     </div>
+    {% endfor %}
+    {% if crawl_logs|length > 3 %}
+    <details class="crawl-more">
+        <summary>还有 {{ crawl_logs|length - 3 }} 条记录，点此展开</summary>
+        {% for log in crawl_logs[3:] %}
+        <div class="ddl-row">
+            <div>
+                {% if log['status'] == 'success' %}✅{% elif log['status'] == 'failed' %}❌{% else %}⏭️{% endif %}
+                {{ log['message'] }}
+                <div class="file-meta">{{ log['created_at'] }}（{{ log['source'] }}）</div>
+            </div>
+        </div>
+        {% endfor %}
+    </details>
+    {% endif %}
     {% else %}
     <p class="empty">还没有同步记录。配置好账号后点「立即同步」或使用「半自动同步」。</p>
-    {% endfor %}
+    {% endif %}
     </div>
 </div>
 

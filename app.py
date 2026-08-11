@@ -70,6 +70,12 @@ app.secret_key = "study-helper-local-secret-key"
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_UPLOAD_MB * 1024 * 1024
 
 
+# 浏览器标签页小图标（兼容直接请求 /favicon.ico 的情况）
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(resource_path("static"), "favicon.png", mimetype="image/png")
+
+
 @app.route("/")
 def index():
     """首页：快到期的 DDL 醒目展示在最上面"""
