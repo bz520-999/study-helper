@@ -150,7 +150,7 @@ def index():
         schedule_json=schedule_json,
         exam_json=exam_json,
         ddl_json=ddl_json,
-        semester_start=models.get_setting("semester_start") or "2026-09-07",
+        semester_start=models.get_setting("semester_start") or "2026-08-24",
     )
 
 

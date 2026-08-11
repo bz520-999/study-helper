@@ -250,7 +250,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // 当前周起始日期（学期第1周周一 + (curWeek-1)周）
     function weekStartDate() {
         var ss = (semesterStart||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (!ss) return new Date(2026, 8, 7);
+        if (!ss) return new Date(2026, 7, 24);
         var s = new Date(parseInt(ss[1]), parseInt(ss[2])-1, parseInt(ss[3]));
         s.setDate(s.getDate() + (curWeek - 1) * 7);
         return s;
@@ -441,7 +441,7 @@ document.addEventListener("DOMContentLoaded", function () {
         var wk = ddlCurWeek;
         try { if (typeof curWeek !== "undefined") wk = curWeek; } catch (e) {}
         var ss = (ddlSemesterStart||"").match(/^(\d{4})-(\d{2})-(\d{2})/);
-        var s = ss ? new Date(+ss[1], +ss[2]-1, +ss[3]) : new Date(2026, 8, 7);
+        var s = ss ? new Date(+ss[1], +ss[2]-1, +ss[3]) : new Date(2026, 7, 24);
         s.setDate(s.getDate() + (wk - 1) * 7);
         return s;
     }
