@@ -127,6 +127,8 @@ document.addEventListener("DOMContentLoaded", function () {
         <span class="muted" id="sched-week-label">第 1 周</span>
         <button type="button" class="btn btn-small" id="sched-next">下一周 ▶</button>
         <button type="button" class="btn btn-small" id="sched-today">回到本周</button>
+        <!-- 移动端：单日/整周切换（窄屏显示，桌面隐藏；JS 控制文案） -->
+        <button type="button" class="btn btn-small" id="sched-day-toggle">单日</button>
     </div>
 
     <div class="schedule-wrap">
@@ -156,6 +158,18 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="ddl-overlay" id="ddl-overlay-5" style="display:none;"></div>
         <div class="ddl-overlay" id="ddl-overlay-6" style="display:none;"></div>
     </div>
+
+    <!-- 移动端单日视图：窄屏默认显示（JS 控制，用 style.display 切换避免与 [hidden] 守卫冲突） -->
+    <div class="day-view" id="day-view" style="display:none">
+        <div class="day-nav">
+            <button type="button" class="btn btn-small" id="day-prev">◀ 前一天</button>
+            <span class="day-label" id="day-label">今天</span>
+            <button type="button" class="btn btn-small" id="day-next">后一天 ▶</button>
+            <button type="button" class="btn btn-small" id="day-today">今天</button>
+        </div>
+        <div id="day-body"></div>
+    </div>
+
     <p class="muted" id="sched-legend" style="margin-top:8px"></p>
 
     <script>
@@ -175,6 +189,11 @@ document.addEventListener("DOMContentLoaded", function () {
     var rawExams = {{ exam_json | safe }};
     var semesterStart = "{{ semester_start }}";   // 学期第1周周一，用于考试日期→周次换算
     var DAYS = ["星期一","星期二","星期三","星期四","星期五","星期六","星期日"];
+
+    // 单日视图会先于下方 DDL 脚本用到转义函数（跨 script 块不提升，此处先定义一份）
+    function escapeHtml(s) {
+        return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
 
     // 课程颜色分配（每门课一个颜色；深色版调色板，保证白字对比度 ≥4.5:1）
     var PALETTE = ["#b03a2e","#2471a3","#1e8449","#b94a00","#7d3c98","#0e6655",
@@ -399,20 +418,150 @@ document.addEventListener("DOMContentLoaded", function () {
         return parseSections(course.sections) || bigSectionToSections(course.slot);
     }
 
-    // 翻周按钮
-    document.getElementById("sched-prev").addEventListener("click", function () {
-        if (curWeek > 1) { curWeek--; renderSchedule(); }
-    });
-    document.getElementById("sched-next").addEventListener("click", function () {
-        if (curWeek < maxWeek) { curWeek++; renderSchedule(); }
-    });
+    // 翻周按钮：单日模式下操作日期（±7 天），整周模式操作 curWeek
+    function changeWeek(delta) {
+        if (dayMode) {
+            viewDate.setDate(viewDate.getDate() + delta * 7);
+            renderDayView();
+        } else {
+            var nc = curWeek + delta;
+            if (nc >= 1 && nc <= maxWeek) { curWeek = nc; renderSchedule(); }
+        }
+    }
+    document.getElementById("sched-prev").addEventListener("click", function () { changeWeek(-1); });
+    document.getElementById("sched-next").addEventListener("click", function () { changeWeek(1); });
     document.getElementById("sched-today").addEventListener("click", function () {
-        // 计算当前是第几周（从学期第1周估算，简化：默认第1周）
-        curWeek = 1;
+        if (dayMode) {
+            viewDate = new Date();      // 回到今天
+            renderDayView();
+        } else {
+            curWeek = 1;                // 回到本周（从学期第1周估算，简化）
+            renderSchedule();
+        }
+    });
+
+    // ===== 移动端单日视图：窄屏默认显示「今天」，不用横向滚动看课表 =====
+    var dayMode = window.innerWidth <= 860;   // 窄屏默认单日，桌面默认整周
+    var viewDate = new Date();                 // 单日视图当前显示的日期
+    var DAY_CN = ["一", "二", "三", "四", "五", "六", "日"];
+
+    function weekOfDate(d) {
+        var ss = (semesterStart || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!ss) return 1;
+        var s = new Date(+ss[1], +ss[2] - 1, +ss[3]);
+        var diff = Math.floor((d - s) / 86400000);
+        return diff < 0 ? 1 : Math.floor(diff / 7) + 1;
+    }
+    function renderDayView() {
+        var body = document.getElementById("day-body");
+        if (!body) return;
+        var dayIdx = (viewDate.getDay() + 6) % 7;   // 0=周一
+        // 周次与整周视图同步（翻周/切回整周数据一致）
+        curWeek = Math.min(maxWeek, Math.max(1, weekOfDate(viewDate)));
+        document.getElementById("day-label").textContent =
+            (viewDate.getMonth() + 1) + "/" + viewDate.getDate() + " 周" + DAY_CN[dayIdx];
+        // 当天课程块（周次过滤 + 小节解析，与整周视图同一套逻辑）
+        var blocks = [];
+        for (var i = 0; i < rawSchedule.length; i++) {
+            var c = rawSchedule[i];
+            if (DAYS.indexOf(c.day) !== dayIdx) continue;
+            var secs = parseSections(c.sections) || bigSectionToSections(c.slot);
+            if (!secs) continue;
+            var weeksSet = parseWeeks(c.weeks);
+            if (weeksSet.size > 0 && !weeksSet.has(curWeek)) continue;
+            blocks.push({ course: c, start: secs[0], end: secs[1] });
+        }
+        blocks.sort(function (a, b) { return a.start - b.start; });
+        // 当天考试/小测（考试红、小测紫，与整周视图同色）
+        var exams = [];
+        for (var ei = 0; ei < rawExams.length; ei++) {
+            var ex = rawExams[ei];
+            var dinfo = examDateInfo(ex.due_at);
+            if (!dinfo || dinfo.week !== curWeek || dinfo.dayIdx !== dayIdx) continue;
+            exams.push(ex);
+        }
+        var html = "";
+        if (!blocks.length && !exams.length) {
+            html = '<p class="empty">这天没有课 🎉</p>';
+        }
+        var lastPart = "";
+        for (var b = 0; b < blocks.length; b++) {
+            var blk = blocks[b];
+            var part = blk.start <= 5 ? "上午" : (blk.start <= 10 ? "下午" : "晚上");
+            if (part !== lastPart) {
+                if (lastPart) html += '</div>';
+                html += '<div class="day-part"><div class="day-part-title">' + part + '</div>';
+                lastPart = part;
+            }
+            var secLabel = blk.start === blk.end ? "第" + blk.start + "节" : "第" + blk.start + "-" + blk.end + "节";
+            html += '<div class="day-course">' +
+                '<div class="day-course-time">' + secLabel + '<span>' + SECTIONS[blk.start - 1].t + '</span></div>' +
+                '<div class="day-course-card" style="background:' + colorFor(blk.course.name) + '">' +
+                '<div class="day-course-name">' + escapeHtml(blk.course.name) + '</div>' +
+                '<div class="day-course-meta">' + escapeHtml(blk.course.teacher || "") +
+                (blk.course.location ? " · " + escapeHtml(blk.course.location) : "") + '</div>' +
+                '</div></div>';
+        }
+        if (exams.length) {
+            html += '<div class="day-part"><div class="day-part-title">考试 / 小测</div>';
+            for (var exi = 0; exi < exams.length; exi++) {
+                var ex = exams[exi];
+                var tM = (ex.due_at || "").match(/(\d{1,2}):(\d{2})/);
+                var tStr = tM ? tM[1] + ":" + tM[2] : "";
+                var isQuiz = ex.kind === "quiz";
+                html += '<div class="day-exam ' + (isQuiz ? "quiz" : "") + '">' +
+                    (isQuiz ? "小测" : "考试") + "：" + escapeHtml(ex.title) +
+                    (ex.location ? " · " + escapeHtml(ex.location) : "") +
+                    (tStr ? " · " + tStr : "") + '</div>';
+            }
+            html += '</div>';
+        }
+        if (lastPart) html += '</div>';
+        body.innerHTML = html;
+        // 同步整周视图数据（翻周后切回整周不用重新加载）
+        updateDateRow();
         renderSchedule();
+    }
+    // 单日/整周切换
+    function applyDayMode() {
+        var dv = document.getElementById("day-view");
+        var sw = document.querySelector(".schedule-wrap");
+        var btn = document.getElementById("sched-day-toggle");
+        var todayBtn = document.getElementById("sched-today");
+        if (!dv || !sw) return;
+        if (dayMode) {
+            dv.style.display = "block";
+            sw.style.display = "none";
+            if (btn) btn.textContent = "整周";
+            if (todayBtn) todayBtn.textContent = "回到今天";
+            renderDayView();
+        } else {
+            dv.style.display = "none";
+            sw.style.display = "";
+            if (btn) btn.textContent = "单日";
+            if (todayBtn) todayBtn.textContent = "回到本周";
+            renderSchedule();
+        }
+    }
+    document.getElementById("sched-day-toggle").addEventListener("click", function () {
+        dayMode = !dayMode;
+        applyDayMode();
+    });
+    document.getElementById("day-prev").addEventListener("click", function () {
+        viewDate.setDate(viewDate.getDate() - 1);
+        renderDayView();
+    });
+    document.getElementById("day-next").addEventListener("click", function () {
+        viewDate.setDate(viewDate.getDate() + 1);
+        renderDayView();
+    });
+    document.getElementById("day-today").addEventListener("click", function () {
+        viewDate = new Date();
+        renderDayView();
     });
 
     renderSchedule();
+    applyDayMode();   // 窄屏：隐藏整周表格、显示单日视图
     </script>
     {% else %}
     <p class="empty">还没有课表数据。去 <a href="{{ url_for('settings_page') }}">设置</a> 页同步教务系统即可自动导入。</p>
