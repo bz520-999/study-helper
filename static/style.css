@@ -937,6 +937,7 @@ textarea:focus {
     border: 1px dashed var(--primary);
     border-radius: var(--radius-control);
     cursor: text;
+}
 /* ---------- 每日 DDL 清单（时间轴可视化） ---------- */
 .ddl-board {
     background: var(--surface-2);
