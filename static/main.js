@@ -45,6 +45,15 @@ document.querySelectorAll("input[type=file]").forEach(function (input) {
 });
 
 // ============================================
+// 通用工具：HTML 转义（防止把用户输入当 HTML 执行，日历/聊天渲染共用）
+// ============================================
+function escapeHtml(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// ============================================
 // 智能体对话页
 // ============================================
 var chatInput = document.getElementById("chat-input");
@@ -57,11 +66,8 @@ if (chatInput && chatSend && chatBox) {
     // 聊天消息美化：把模型回答里的 Markdown 符号渲染成真实格式
     // **加粗** → 加粗、# 标题 → 标题、- 列表 → 列表、`代码` → 等宽字体
     // 安全顺序：先转义 HTML 再替换符号，所以 <script> 之类不可能被注入
+    // 注意：escapeHtml 是全局函数（上方定义），聊天和日历共用
     // ============================================
-    function escapeHtml(s) {
-        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    }
     function mdToHtml(text) {
         if (!text) return "";
         var esc = escapeHtml(text);                       // 1. 先转义，防注入
@@ -777,3 +783,158 @@ function applyTheme(theme) {
         });
     }
 })();
+
+// ============================================
+// 日历视图（/calendar 页）：月历上标 DDL 截止日，点某天看当天任务
+// 数据 ALL_DDLS 由后端注入（模板里的 <script> 变量）
+// ============================================
+var calBody = document.getElementById("cal-body");
+if (calBody) {
+    var calTitle = document.getElementById("cal-title");
+    var calDayPanel = document.getElementById("cal-day-panel");
+    var calLegend = document.getElementById("cal-legend");
+    var selDate = null;          // 当前选中的日期 YYYY-MM-DD
+    var curYear, curMonth;       // 当前显示的月份（curMonth: 0-11）
+
+    function calParseDue(dueAt) {
+        var m = (dueAt || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? m[1] + "-" + m[2] + "-" + m[3] : null;
+    }
+    function calTodayStr() {
+        var d = new Date();
+        return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+    }
+
+    function renderCalendar() {
+        var year = curYear, month = curMonth;
+        var first = new Date(year, month, 1);
+        var lead = (first.getDay() + 6) % 7;      // 周一开头（0=周一）
+        var daysInMonth = new Date(year, month + 1, 0).getDate();
+        var todayStr = calTodayStr();
+        var byDate = {};
+        ALL_DDLS.forEach(function (t) {
+            var d = calParseDue(t.due_at);
+            if (d) (byDate[d] = byDate[d] || []).push(t);
+        });
+        var html = "";
+        for (var r = 0; r < 6; r++) {
+            html += "<tr>";
+            for (var c = 0; c < 7; c++) {
+                var dayNum = r * 7 + c - lead + 1;
+                if (dayNum < 1 || dayNum > daysInMonth) { html += '<td class="cal-cell cal-empty"></td>'; continue; }
+                var ds = year + "-" + ("0" + (month + 1)).slice(-2) + "-" + ("0" + dayNum).slice(-2);
+                var ddl = byDate[ds] || [];
+                var overdue = ddl.some(function (t) { return t.status === "pending" && t.due_at < todayStr + " 00:00"; });
+                var cls = "cal-cell";
+                if (ds === todayStr) cls += " cal-today";
+                if (ds === selDate) cls += " cal-selected";
+                if (ddl.length) cls += overdue ? " cal-has-ddl-overdue" : " cal-has-ddl";
+                var dots = "";
+                if (ddl.length) {
+                    dots = '<div class="cal-dots">' + ddl.slice(0, 3).map(function () {
+                        return '<span class="cal-dot"></span>';
+                    }).join("") + (ddl.length > 3 ? '<span class="cal-dot-more">+' + (ddl.length - 3) + "</span>" : "") + "</div>";
+                }
+                html += '<td class="' + cls + '" data-date="' + ds + '">' +
+                    '<div class="cal-day-num">' + dayNum + "</div>" + dots + "</td>";
+            }
+            html += "</tr>";
+            if ((r + 1) * 7 - lead >= daysInMonth) break;   // 行数够就停
+        }
+        calBody.innerHTML = html;
+        calTitle.textContent = year + " 年 " + (month + 1) + " 月";
+
+        // 图例：本月 DDL 分布
+        var mPrefix = year + "-" + ("0" + (month + 1)).slice(-2);
+        var activeCount = 0, overCount = 0, doneCount = 0;
+        ALL_DDLS.forEach(function (t) {
+            var d = calParseDue(t.due_at);
+            if (d && d.indexOf(mPrefix) === 0) {
+                if (t.status === "done") doneCount++;
+                else if (t.due_at < todayStr + " 00:00") overCount++;
+                else activeCount++;
+            }
+        });
+        calLegend.textContent = "本月：" + activeCount + " 项待完成，" + overCount + " 项已过期，" + doneCount + " 项已完成";
+    }
+
+    // 点某天 → 下方显示当天任务（事件委托，防 XSS：内容都过 escapeHtml）
+    calBody.addEventListener("click", function (e) {
+        var td = e.target.closest ? e.target.closest("td[data-date]") : null;
+        if (!td || !td.dataset.date) return;
+        selDate = td.dataset.date;
+        renderCalendar();
+        var items = ALL_DDLS.filter(function (t) { return calParseDue(t.due_at) === selDate; });
+        var p = selDate.split("-");
+        var wd = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][new Date(+p[0], +p[1] - 1, +p[2]).getDay()];
+        var todayStr = calTodayStr();
+        if (!items.length) {
+            calDayPanel.innerHTML = '<h2>' + selDate + "（" + wd + "）</h2><p class=\"empty\">这一天没有 DDL 截止，休息一下！</p>";
+            return;
+        }
+        items.sort(function (a, b) { return a.due_at > b.due_at ? 1 : -1; });
+        var html = "<h2>" + selDate + "（" + wd + "）· " + items.length + " 项任务</h2>";
+        html += items.map(function (t) {
+            var cls = "ddl-row" + (t.status === "done" ? " ddl-done" : (t.due_at < todayStr + " 00:00" ? " ddl-overdue" : ""));
+            var badge = t.status === "done" ? '<span class="badge badge-done">已完成</span>'
+                : (t.due_at < todayStr + " 00:00" ? '<span class="badge badge-overdue">已过期</span>' : '<span class="badge badge-normal">待完成</span>');
+            return '<div class="' + cls + '"><div><strong>' + escapeHtml(t.title) + "</strong>" +
+                (t.course ? '<span class="tag">' + escapeHtml(t.course) + "</span>" : "") + "</div>" +
+                '<div class="right"><span class="muted">' + escapeHtml(t.due_at) + "</span>" + badge + "</div></div>";
+        }).join("");
+        calDayPanel.innerHTML = html;
+    });
+
+    document.getElementById("cal-prev").addEventListener("click", function () {
+        calSetMonth(curMonth === 0 ? curYear - 1 : curYear, curMonth === 0 ? 11 : curMonth - 1);
+    });
+    document.getElementById("cal-next").addEventListener("click", function () {
+        calSetMonth(curMonth === 11 ? curYear + 1 : curYear, curMonth === 11 ? 0 : curMonth + 1);
+    });
+    document.getElementById("cal-today").addEventListener("click", function () {
+        var d = new Date();
+        calSetMonth(d.getFullYear(), d.getMonth());
+    });
+    function calSetMonth(y, m) { curYear = y; curMonth = m; renderCalendar(); }
+    var now = new Date();
+    calSetMonth(now.getFullYear(), now.getMonth());
+}
+
+// ============================================
+// 语音输入（智能体页）：用浏览器自带的语音识别，说中文自动填进输入框
+// 浏览器不支持（如 Firefox）就自动隐藏麦克风按钮，不影响其他功能
+// ============================================
+var voiceBtn = document.getElementById("chat-voice");
+if (voiceBtn) {
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+        var rec = new SpeechRec();
+        rec.lang = "zh-CN";          // 识别普通话
+        rec.interimResults = false;  // 识别完了一次性给结果
+        rec.onresult = function (e) {
+            var text = "";
+            for (var i = 0; i < e.results.length; i++) {
+                text += e.results[i][0].transcript;
+            }
+            chatInput.value = text;  // 填进输入框，用户确认后回车发送
+            chatInput.focus();
+        };
+        function voiceEnd() { voiceBtn.classList.remove("voice-active"); }
+        rec.onerror = voiceEnd;
+        rec.onend = voiceEnd;
+        voiceBtn.addEventListener("click", function () {
+            if (voiceBtn.classList.contains("voice-active")) {
+                rec.stop();          // 再点一次 = 停止录音
+                return;
+            }
+            try {
+                rec.start();
+                voiceBtn.classList.add("voice-active");   // 变红 + 脉冲，提示正在听
+            } catch (e) {
+                voiceBtn.classList.remove("voice-active");
+            }
+        });
+    } else {
+        voiceBtn.style.display = "none";   // 浏览器不支持语音识别，不显示按钮
+    }
+}

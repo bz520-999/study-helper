@@ -111,6 +111,9 @@ def index():
     today = datetime.date.today().strftime("%Y-%m-%d")
     today_count = sum(1 for it in items if (it["task"]["due_at"] or "").startswith(today))
 
+    # 连续学习天数（每天完成 ≥1 项 DDL 打卡）
+    streak = models.get_streak_info()
+
     return render_template(
         "index.html",
         overdue=overdue,
@@ -118,6 +121,8 @@ def index():
         upcoming=upcoming,
         pending_count=len(items),
         today_count=today_count,
+        streak=streak["streak"],
+        today_done=streak["today_done"],
         schedule=schedule_rows,
         schedule_count=models.count_course_schedule(),
         schedule_json=schedule_json,
@@ -346,6 +351,22 @@ def search_page():
     )
 
 
+@app.route("/calendar")
+def calendar_page():
+    """日历视图：月历上标出所有 DDL 的截止日，点某天看当天任务"""
+    tasks = models.list_ddl_tasks()
+    ddl_json = json.dumps([
+        {
+            "title": t["title"],
+            "due_at": t["due_at"],
+            "course": t["course_name"] or "",
+            "status": t["status"],
+        }
+        for t in tasks
+    ], ensure_ascii=False)
+    return render_template("calendar.html", ddl_json=ddl_json, total=len(tasks))
+
+
 @app.route("/review")
 def review_page():
     """复习清单页：为 DDL 生成计划 + 查看/勾选计划"""
@@ -411,6 +432,20 @@ def review_clear(ddl_id):
 def export_page():
     """导出页：选择 数据类型 × 格式"""
     return render_template("export.html")
+
+
+@app.route("/ical/study.ics")
+def ical_subscribe():
+    """手机日历订阅地址：返回完整日历（进行中 DDL + 复习计划）。
+    手机日历「添加订阅日历」填这个网址，电脑上改动后手机自动同步（iOS 通常一天内自动刷新）。
+    注意：这个地址没有登录验证，只适合手机/电脑走 Tailscale 等私有内网时用，别把地址发给别人。"""
+    ddls = models.list_ddl_tasks(status="pending")   # 已完成的不该再响闹钟（与下载导出一致）
+    plans = models.list_review_plans()
+    resp = make_response(exporter.to_ical(ddls, plans))
+    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    resp.headers["Content-Disposition"] = "inline; filename=study.ics"
+    resp.headers["Cache-Control"] = "no-store"   # 订阅端每次拉取都拿最新
+    return resp
 
 
 @app.route("/export/download")
@@ -848,7 +883,7 @@ if __name__ == "__main__":
     if config.AUTO_OPEN_BROWSER and not os.environ.get("NO_BROWSER"):
         threading.Timer(1.2, webbrowser.open, args=(url,)).start()
     try:
-        app.run(host="127.0.0.1", port=config.PORT, debug=False)
+        app.run(host=config.HOST, port=config.PORT, debug=False)
     except OSError as e:
         print(f"\n[错误] 启动失败：{e}")
         if getattr(sys, "frozen", False):

@@ -102,6 +102,15 @@ def init_db():
         created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
 
+    -- 每日学习记录表（2026-08-10 新增：连续打卡 + 将来专注计时都记这里）
+    -- 每天完成 ≥1 项 DDL 就记一条，连续天数 = 从今天/昨天往前连续有记录的天数
+    CREATE TABLE IF NOT EXISTS daily_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        log_date TEXT NOT NULL UNIQUE,        -- 日期 YYYY-MM-DD（一天一行）
+        completed_count INTEGER NOT NULL DEFAULT 0,   -- 当天完成的任务数
+        focus_seconds INTEGER NOT NULL DEFAULT 0      -- 当天专注秒数（专注功能预留）
+    );
+
     -- 资料全文搜索表（FTS5 虚拟表，阶段 7；用 jieba 分词后的文本）
     -- 注意：FTS5 不可用（个别精简版 SQLite）时会被跳过，搜索自动降级
     CREATE VIRTUAL TABLE IF NOT EXISTS materials_fts USING fts5(

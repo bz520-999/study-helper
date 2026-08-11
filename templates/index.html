@@ -29,6 +29,14 @@
             <div class="stat-label">课表课程</div>
         </div>
     </div>
+    <!-- 连续学习打卡：每天完成 ≥1 项任务点亮一天（streak>0 时数字荧光高亮） -->
+    <div class="stat-card">
+        <div class="stat-icon red"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+        <div>
+            <div class="stat-num">{% if streak > 0 %}<span class="hl">{{ streak }}</span>{% else %}{{ streak }}{% endif %}</div>
+            <div class="stat-label">连续学习（天）{% if today_done %} · 今日已打卡{% endif %}</div>
+        </div>
+    </div>
 </section>
 
 <!-- 今天截止提醒：右下角 Toast + 浏览器通知（showToast 在 main.js 里定义，DOMContentLoaded 时已加载） -->

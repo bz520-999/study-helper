@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}日历 · 学习助手 Pro{% endblock %}
+
+{% block content %}
+<h1>日历</h1>
+
+<div class="card">
+    <!-- 月份切换工具条 -->
+    <div class="cal-toolbar">
+        <button type="button" class="btn btn-small" id="cal-prev">◀ 上月</button>
+        <span class="cal-title" id="cal-title">2026 年 8 月</span>
+        <button type="button" class="btn btn-small" id="cal-next">下月 ▶</button>
+        <button type="button" class="btn btn-small" id="cal-today">回到本月</button>
+    </div>
+
+    <!-- 月历网格：由 JS 渲染（周一开头，和课表一致） -->
+    <table class="cal-grid" id="cal-grid">
+        <thead>
+            <tr>
+                <th>周一</th><th>周二</th><th>周三</th><th>周四</th>
+                <th>周五</th><th>周六</th><th>周日</th>
+            </tr>
+        </thead>
+        <tbody id="cal-body"><!-- JS 填充 --></tbody>
+    </table>
+
+    <p class="muted" style="margin-top: 8px" id="cal-legend"></p>
+
+    <!-- 点某天：显示当天的任务列表 -->
+    <div id="cal-day-panel">
+        <h2 id="cal-day-title">选择一天查看任务</h2>
+        <p class="empty">日历上的红点表示当天有 DDL 截止，点任意日期查看详情。</p>
+    </div>
+</div>
+
+<script>
+// 全部 DDL（页面加载时由后端注入；数据量小，本地过滤即可）
+var ALL_DDLS = {{ ddl_json | safe }};
+</script>
+{% endblock %}

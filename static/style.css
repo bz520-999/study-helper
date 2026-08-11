@@ -290,6 +290,7 @@ h2 { font-size: 16px; margin-bottom: 12px; color: var(--ink); font-weight: 650; 
 .stat-icon.blue   { background: var(--primary-bg); color: var(--primary-text); }
 .stat-icon.orange { background: var(--warning-bg); color: var(--warning-text); }
 .stat-icon.green  { background: var(--success-bg); color: var(--success); }
+.stat-icon.red    { background: var(--danger-bg); color: var(--danger); }
 /* 统计卡图标（feather 线性 SVG，与侧边栏同风格） */
 .stat-icon svg {
     width: 20px;
@@ -642,6 +643,15 @@ textarea:focus {
 .chat-input-row { display: flex; gap: 8px; margin-top: 12px; }
 .chat-input-row input { flex: 1; }
 
+/* 语音输入按钮：麦克风图标；录音时变红 + 脉冲提示正在听 */
+.chat-voice-btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 10px; }
+.chat-voice-btn svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.75; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.voice-active { border-color: var(--danger) !important; color: var(--danger) !important; background: var(--danger-bg) !important; animation: voice-pulse 1.2s ease-in-out infinite; }
+@keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(212, 63, 53, 0.3); }
+    50%      { box-shadow: 0 0 0 5px rgba(212, 63, 53, 0); }
+}
+
 /* 消息里的 Markdown 渲染样式（**加粗**、`代码`、列表等符号不再裸露） */
 .chat-msg strong { font-weight: 700; }
 .chat-msg em { font-style: italic; }
@@ -889,4 +899,41 @@ textarea:focus {
     .ddl-row { flex-wrap: wrap; }
     .chat-card { height: 70vh; }
     .modal-box { padding: 20px 16px 14px; }
+}
+
+/* ============================================
+   日历页（calendar.html）：月历网格 + 当天任务面板
+   ============================================ */
+.cal-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.cal-title { font-weight: 650; font-size: 16px; margin: 0 4px; }
+.cal-toolbar #cal-today { margin-left: auto; }          /* 「回到本月」靠右 */
+.cal-grid { width: 100%; border-collapse: collapse; }
+.cal-grid th { font-size: 13px; color: var(--muted); font-weight: 600; padding: 8px 0; text-align: center; }
+.cal-cell { border: 1px solid var(--border-soft); height: 68px; padding: 5px 4px 3px; text-align: center; vertical-align: top; cursor: pointer; }
+.cal-cell:hover { background: var(--surface-2); }
+.cal-empty { cursor: default; border-color: transparent; background: transparent; }
+.cal-day-num { font-size: 13px; line-height: 22px; }
+.cal-today .cal-day-num { width: 22px; height: 22px; margin: 0 auto; border-radius: 50%; background: var(--primary-bg); color: var(--primary-text); font-weight: 700; }
+.cal-selected { outline: 2px solid var(--primary); outline-offset: -2px; }
+.cal-dots { display: flex; justify-content: center; gap: 3px; margin-top: 5px; flex-wrap: wrap; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.cal-has-ddl-overdue .cal-dot { background: var(--danger); }
+.cal-dot-more { font-size: 10px; line-height: 1; color: var(--muted); }
+#cal-day-panel { margin-top: 14px; border-top: 1px dashed var(--border-soft); padding-top: 12px; }
+#cal-day-panel h2 { margin-bottom: 10px; font-size: 15px; }
+#cal-day-panel .ddl-row { margin-bottom: 8px; }
+
+/* 手机日历订阅网址：等宽字体 + 主题色虚线框，点击即全选方便复制 */
+.subscribe-url {
+    width: 100%;
+    max-width: 520px;
+    margin: 8px 0 4px;
+    padding: 8px 12px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    color: var(--primary);
+    background: var(--primary-bg);
+    border: 1px dashed var(--primary);
+    border-radius: var(--radius-control);
+    cursor: text;
 }

@@ -90,8 +90,37 @@ def list_ddl_tasks(status=None):
 
 
 def complete_ddl(task_id):
-    """把一条 DDL 标记为已完成"""
+    """把一条 DDL 标记为已完成，并记入当天学习打卡（每天完成 ≥1 项 = 打卡成功）"""
     db.execute("UPDATE ddl_tasks SET status = 'done' WHERE id = ?", (task_id,))
+    today = datetime.date.today().isoformat()
+    db.execute(
+        "INSERT INTO daily_logs (log_date, completed_count) VALUES (?, 1) "
+        "ON CONFLICT(log_date) DO UPDATE SET completed_count = completed_count + 1",
+        (today,))
+
+
+def get_streak_info():
+    """
+    连续学习天数（打卡）：从今天往前数，每天都有完成记录就算连续。
+    今天还没完成时从昨天开始数——今天还有机会，不算断签。
+    返回 {"streak": 连续天数, "today_done": 今天是否已打卡}
+    """
+    conn = db.get_conn()
+    try:
+        rows = conn.execute("SELECT log_date FROM daily_logs ORDER BY log_date DESC").fetchall()
+    finally:
+        conn.close()
+    dates = {r["log_date"] for r in rows}
+    if not dates:
+        return {"streak": 0, "today_done": False}
+    today = datetime.date.today()
+    today_done = today.isoformat() in dates
+    day = today if today_done else today - datetime.timedelta(days=1)
+    streak = 0
+    while day.isoformat() in dates:
+        streak += 1
+        day -= datetime.timedelta(days=1)
+    return {"streak": streak, "today_done": today_done}
 
 
 def get_ddl(task_id):

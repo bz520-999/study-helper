@@ -4,6 +4,23 @@
 {% block content %}
 <h1>导出数据</h1>
 
+<!-- 手机日历订阅：配好内网穿透（Tailscale 等）后，把网址填进手机日历，DDL 变动自动同步 -->
+<div class="card">
+    <h2>手机日历订阅（远程自动同步）</h2>
+    <p>把这个网址填进手机日历的「添加订阅日历」，以后电脑上新增/修改 DDL，<strong>手机日历会自动更新</strong>——
+        不用手动传文件，也不用连同一个 Wi-Fi。</p>
+    <input type="text" class="subscribe-url" readonly value="{{ request.host }}/ical/study.ics"
+           onclick="this.select()" title="点击全选，方便复制">
+    <div class="note">
+        <p>📱 <strong>怎么订阅</strong>：iPhone →「设置 › 日历 › 帐户 › 添加帐户 › 其他 › 添加已订阅的日历」，粘贴上面的网址；
+            Android → Google 日历网页版「其他日历 › 按网址添加」（或 Outlook 日历 App，同样支持订阅）。
+            订阅后日历 App 会定期自动刷新，想马上看到最新可以手动刷新一次。</p>
+        <p>🌐 <strong>远距离使用的前提</strong>：电脑装好内网穿透工具（如 Tailscale）并保持开机，手机装同一工具、
+            登录同一账号。此时把上面的网址里的 <code>127.0.0.1:5000</code> 换成电脑的 Tailscale 地址
+            （形如 <code>http://100.x.x.x:5000/ical/study.ics</code>），手机上任何网络都能访问。</p>
+    </div>
+</div>
+
 <div class="card">
     <h2>选择要导出的内容与格式</h2>
     <form method="get" action="{{ url_for('export_download') }}" class="search-form">
