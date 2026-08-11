@@ -21,19 +21,21 @@
         <aside class="sidebar">
             <div class="brand">学习助手 Pro</div>
             <nav class="side-nav">
-                <div class="nav-group">学习管理</div>
+                <div class="nav-group">任务</div>
                 <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">
                     <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>首页</a>
                 <a href="{{ url_for('ddl_list') }}" class="{{ 'active' if request.endpoint == 'ddl_list' else '' }}">
                     <span class="nav-icon"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>DDL 清单</a>
                 <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' else '' }}">
                     <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>日历</a>
+                <a href="{{ url_for('review_page') }}" class="{{ 'active' if request.endpoint == 'review_page' else '' }}">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>复习</a>
+
+                <div class="nav-group">资源</div>
                 <a href="{{ url_for('materials_list') }}" class="{{ 'active' if request.endpoint == 'materials_list' else '' }}">
                     <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>资料</a>
                 <a href="{{ url_for('search_page') }}" class="{{ 'active' if request.endpoint == 'search_page' else '' }}">
                     <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>搜索</a>
-                <a href="{{ url_for('review_page') }}" class="{{ 'active' if request.endpoint == 'review_page' else '' }}">
-                    <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>复习</a>
                 <a href="{{ url_for('export_page') }}" class="{{ 'active' if request.endpoint == 'export_page' else '' }}">
                     <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>导出</a>
 
@@ -86,6 +88,23 @@
             </div>
         </main>
     </div>
+
+    <!-- 移动端抽屉遮罩：点遮罩关闭侧边栏（窄屏时显示，main.js 控制） -->
+    <div id="menu-mask" class="menu-mask"></div>
+
+    <!-- 移动端底部 Tab 栏：高频入口 + 「更多」打开抽屉（仅窄屏显示；图标为 feather 线性 SVG） -->
+    {% set more_active = request.endpoint not in ('index', 'ddl_list', 'calendar_page', 'materials_list') %}
+    <nav class="bottom-nav" aria-label="底部导航">
+        <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>首页</a>
+        <a href="{{ url_for('ddl_list') }}" class="{{ 'active' if request.endpoint == 'ddl_list' else '' }}">
+            <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>DDL</a>
+        <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' else '' }}">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>日历</a>
+        <a href="{{ url_for('materials_list') }}" class="{{ 'active' if request.endpoint == 'materials_list' else '' }}">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>资料</a>
+        <button type="button" id="nav-more-btn" class="{{ 'active' if more_active else '' }}">更多</button>
+    </nav>
 
     <!-- 右下角弹出提示（Toast）：main.js 的 showToast() 使用 -->
     <div id="toast-container"></div>

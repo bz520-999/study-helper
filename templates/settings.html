@@ -4,6 +4,16 @@
 {% block content %}
 <h1>设置</h1>
 
+<!-- 设置页 Tab 栏：智能体 / 同步 / 邮件提醒 / 数据（main.js 的 switchSettingsTab 控制显隐） -->
+<nav class="settings-tabs" role="tablist">
+    <button type="button" class="settings-tab active" data-settings-tab="agent" role="tab" aria-selected="true">智能体</button>
+    <button type="button" class="settings-tab" data-settings-tab="sync" role="tab">同步</button>
+    <button type="button" class="settings-tab" data-settings-tab="email" role="tab">邮件提醒</button>
+    <button type="button" class="settings-tab" data-settings-tab="data" role="tab">数据</button>
+</nav>
+
+<div class="settings-panel" data-settings-panel="agent">
+
 <div class="card">
     <h2>智能体（大模型）配置</h2>
     <p class="empty" style="margin-bottom: 12px">
@@ -55,6 +65,9 @@
         <strong>费用说明</strong>：智谱 GLM-4.7-Flash 完全免费；DeepSeek 按量付费（学生日常用量每月约几元内）。
     </p>
 </div>
+</div><!-- /agent panel -->
+
+<div class="settings-panel" data-settings-panel="email" hidden>
 
 <!-- ==================== 邮箱定时发送 iCal ==================== -->
 <div class="card">
@@ -134,6 +147,9 @@
         提示：QQ 邮箱需先在网页版「设置 → 账号 → 开启 POP3/SMTP 服务」生成<strong>授权码</strong>，把授权码填到上面（不是你的 QQ 登录密码）；授权码只保存在本机并加密存储。
     </p>
 </div>
+</div><!-- /email panel -->
+
+<div class="settings-panel" data-settings-panel="sync" hidden>
 
 <!-- ==================== 爬虫配置 ==================== -->
 <div class="card">
@@ -214,6 +230,22 @@
     <div id="crawl-paste-result" style="margin-top: 12px"></div>
 </div>
 
+<!-- ==================== 退出登录（教务，队友功能） ==================== -->
+<div class="card">
+    <h2>退出登录</h2>
+    <p class="empty" style="margin-bottom: 12px">
+        清除已保存的<strong>教务账号密码</strong>、关闭爬虫开关、并清空同步来的<strong>课表数据</strong>。
+        清除后需要重新填写账号密码并同步。
+    </p>
+    <div>
+        <button type="button" class="btn btn-danger" id="crawler-logout-btn">退出登录</button>
+        <span id="crawler-logout-msg" class="muted"></span>
+    </div>
+</div>
+</div><!-- /sync panel -->
+
+<div class="settings-panel" data-settings-panel="data" hidden>
+
 <!-- ==================== 数据备份 ==================== -->
 <div class="card">
     <h2>数据备份</h2>
@@ -267,17 +299,6 @@
     {% endif %}
     </div>
 </div>
+</div><!-- /data panel -->
 
-<!-- ==================== 退出登录（教务，队友功能） ==================== -->
-<div class="card">
-    <h2>退出登录</h2>
-    <p class="empty" style="margin-bottom: 12px">
-        清除已保存的<strong>教务账号密码</strong>、关闭爬虫开关、并清空同步来的<strong>课表数据</strong>。
-        清除后需要重新填写账号密码并同步。
-    </p>
-    <div>
-        <button type="button" class="btn btn-danger" id="crawler-logout-btn">退出登录</button>
-        <span id="crawler-logout-msg" class="muted"></span>
-    </div>
-</div>
 {% endblock %}

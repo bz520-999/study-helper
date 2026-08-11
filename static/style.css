@@ -263,7 +263,7 @@ h2 { font-size: 16px; margin-bottom: 12px; color: var(--ink); font-weight: 650; 
 /* ---------- 首页统计卡组 ---------- */
 .stats-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);   /* 4 张统计卡一行排齐（原来 3 列排成 3+1 不整齐） */
     gap: 12px;
     margin-bottom: 16px;
 }
@@ -865,38 +865,12 @@ textarea:focus {
     }
 }
 
-/* ---------- 窄窗口：侧栏折叠为顶部导航 ---------- */
+/* ---------- 窄窗口：侧边栏改为抽屉（抽屉样式在文件末尾移动端块，级联覆盖此处） ---------- */
 @media (max-width: 860px) {
-    .layout { flex-direction: column; }
-    .sidebar {
-        width: 100%;
-        height: auto;
-        flex-direction: row;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-        overflow-x: auto;
-    }
-    .sidebar .brand { padding: 0 8px 0 0; font-size: 15px; }
-    .side-nav {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 2px;
-        margin: 0;
-        overflow: visible;
-    }
-    .side-nav a { padding: 6px 10px; margin: 0; white-space: nowrap; }
-    .nav-group { display: none; }
-    .sidebar-footer { width: auto; margin-left: auto; border: none; padding: 0; }
-    .theme-btn { width: auto; padding: 6px 10px; }
-    .app-meta { display: none; }
     .container { padding: 20px 14px 48px; }
     h1 { font-size: 20px; }
     .form-grid { grid-template-columns: 1fr; }
-    .stats-row { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
     .ddl-row { flex-wrap: wrap; }
     .chat-card { height: 70vh; }
     .modal-box { padding: 20px 16px 14px; }
@@ -1244,3 +1218,150 @@ textarea:focus {
 .crawl-more[open] summary::before { content: "▾ "; }
 .crawl-more summary:hover { text-decoration: underline; }
 .crawl-more .ddl-row { margin-bottom: 6px; }
+
+/* ---------- 首页工作台：今日任务双列 ---------- */
+.home-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+.home-cols > .card { margin-bottom: 0; }          /* .card 自带底部 margin，网格内清零 */
+.home-cols > .card:only-child { grid-column: 1 / -1; }   /* 只有一张卡时占满整行 */
+
+/* ---------- 设置页 Tab 栏（下划线式，墨蓝 active 与纸感风一致） ---------- */
+.settings-tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+    overflow-x: auto;
+}
+.settings-tab {
+    padding: 8px 16px;
+    font-size: 14px;
+    color: var(--text-muted-2);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--radius-control) var(--radius-control) 0 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.settings-tab:hover { background: var(--surface-3); color: var(--text); }
+.settings-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 650; }
+
+/* hidden 守卫：防止 .card 等 display 规则覆盖 hidden 属性（隐藏的 Tab 面板不显示） */
+[hidden] { display: none !important; }
+
+/* ============================================
+   移动端（≤860px）：底部 Tab 栏 + 抽屉菜单
+   侧边栏不再是顶部横条，改为左侧抽屉；底部 5 个 Tab 承担高频导航
+   ============================================ */
+/* 抽屉遮罩（默认隐藏） */
+.menu-mask {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .35);
+    z-index: 99;
+}
+.menu-mask.open { display: block; }
+
+/* 底部 Tab 栏（默认隐藏，仅窄屏显示） */
+.bottom-nav { display: none; }
+
+/* 抽屉打开时锁住页面滚动 */
+body.menu-open { overflow: hidden; }
+
+/* 注意：本块覆盖前面 860px 断点内的侧边栏横条规则，
+   级联上文件末尾后定义者胜，故抽屉样式必须放在这里 */
+@media (max-width: 860px) {
+    /* 侧边栏 → 抽屉：fixed 定位、默认滑出屏幕，.open 滑入 */
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: min(280px, 85vw);
+        height: 100vh;
+        height: 100dvh;              /* iOS 地址栏收缩时跟随 */
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: 20px 12px 64px;     /* 底部留白，防被固定底栏(101)盖住主题按钮 */
+        border-right: 1px solid var(--border);
+        border-bottom: none;
+        overflow-x: visible;
+        overflow-y: auto;
+        transform: translateX(-100%);
+        transition: transform .25s ease;
+        z-index: 100;
+    }
+    .sidebar.open { transform: none; box-shadow: var(--shadow-hover); }
+    .sidebar .brand { padding: 2px 12px 16px; font-size: 16px; }
+    .side-nav {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        margin-top: 4px;
+        overflow: visible;
+    }
+    .side-nav a { padding: 9px 12px; margin-bottom: 2px; white-space: normal; }
+    .nav-group { display: block; }
+    .sidebar-footer { width: auto; margin-left: 0; border-top: 1px solid var(--border-soft); padding: 10px 4px 0; }
+    .theme-btn { width: 100%; padding: 8px 10px; }
+    .app-meta { display: block; }
+
+    /* 底部 Tab 栏：fixed 底栏，5 个高频入口 + 「更多」打开抽屉 */
+    .bottom-nav {
+        display: flex;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 101;            /* 高于遮罩(99)，抽屉打开时「更多」仍可点击关闭 */
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        padding: 5px 4px calc(5px + env(safe-area-inset-bottom));
+    }
+    .bottom-nav a,
+    .bottom-nav button {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 3px 2px;
+        border: none;
+        background: none;
+        color: var(--text-muted-2);
+        font-size: 11px;
+        font-family: inherit;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .bottom-nav a.active,
+    .bottom-nav a:active,
+    .bottom-nav button:active { color: var(--primary); }
+    .bottom-nav a.active,
+    .bottom-nav button.active { font-weight: 650; }
+    .bottom-nav svg {
+        width: 20px;
+        height: 20px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.75;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        display: block;
+    }
+
+    /* 内容区底部留白，防被固定底栏遮挡 */
+    .container { padding-bottom: 86px; }
+
+    /* 首页：任务双列收为 1 列 */
+    .home-cols { grid-template-columns: 1fr; }
+}

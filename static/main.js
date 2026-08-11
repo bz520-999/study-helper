@@ -172,6 +172,64 @@ if (chatInput && chatSend && chatBox) {
 }
 
 // ============================================
+// 移动端：底部「更多」打开侧边栏抽屉（≤860px 生效；桌面无元素直接返回）
+// ============================================
+(function initMobileNav() {
+    var moreBtn = document.getElementById("nav-more-btn");
+    var sidebar = document.querySelector(".sidebar");
+    var mask = document.getElementById("menu-mask");
+    if (!moreBtn || !sidebar || !mask) return;
+
+    function setMenu(open) {
+        sidebar.classList.toggle("open", open);
+        mask.classList.toggle("open", open);
+        document.body.classList.toggle("menu-open", open);   // 锁页面滚动，防抽屉背后滚动
+    }
+    moreBtn.addEventListener("click", function () {
+        setMenu(!sidebar.classList.contains("open"));
+    });
+    mask.addEventListener("click", function () { setMenu(false); });
+    document.addEventListener("keydown", function (e) {      // ESC 关闭
+        if (e.key === "Escape") setMenu(false);
+    });
+    sidebar.addEventListener("click", function (e) {         // 点到导航项即关闭
+        if (e.target.closest("a")) setMenu(false);
+    });
+})();
+
+// ============================================
+// 设置页：Tab 切换（智能体 / 同步 / 邮件提醒 / 数据）
+// ============================================
+// 设置页卡片太多，分 4 个 Tab。面板用 hidden 属性控制显隐（见 style.css 的 [hidden] 守卫）。
+// 非设置页没有 Tab 元素，函数直接返回（与全站「元素存在门控」模式一致）。
+function switchSettingsTab(name) {
+    var tabs = document.querySelectorAll(".settings-tab");
+    var panels = document.querySelectorAll("[data-settings-panel]");
+    if (!tabs.length || !panels.length) return;
+    tabs.forEach(function (t) {
+        var on = t.getAttribute("data-settings-tab") === name;
+        t.classList.toggle("active", on);
+        t.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    panels.forEach(function (p) {
+        p.hidden = p.getAttribute("data-settings-panel") !== name;
+    });
+    if (location.hash !== "#tab-" + name) history.replaceState(null, "", "#tab-" + name);
+}
+// 初始化：支持 #tab-sync 等 hash 直达（刷新/从其他页面跳回保留所在 Tab；replaceState 不产生历史项）
+(function initSettingsTabs() {
+    var tabs = document.querySelectorAll(".settings-tab");
+    if (!tabs.length) return;
+    var m = location.hash.match(/^#tab-(agent|sync|email|data)$/);
+    switchSettingsTab(m ? m[1] : "agent");
+    tabs.forEach(function (t) {
+        t.addEventListener("click", function () {
+            switchSettingsTab(t.getAttribute("data-settings-tab"));
+        });
+    });
+})();
+
+// ============================================
 // 设置页：保存大模型配置
 // ============================================
 var agentForm = document.getElementById("agent-form");
@@ -204,7 +262,7 @@ if (backupBtn) {
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 msg.textContent = data.ok ? "✅ " + data.msg : "❌ " + data.msg;
-                if (data.ok) setTimeout(function () { location.reload(); }, 1000);
+                if (data.ok) setTimeout(function () { location.hash = "#tab-data"; location.reload(); }, 1000);
             });
     });
 }
@@ -319,6 +377,7 @@ function cxRender(data) {
 }
 
 function cxStartSync() {
+    switchSettingsTab("sync");   // 防御：扫码同步按钮在「同步」Tab 里
     var msg = document.getElementById("cx-msg");
     msg.textContent = "同步中…（每门课约 5-10 秒，请耐心等待）";
     cxPost("/api/crawler/chaoxing/sync").then(function (data) {
@@ -383,6 +442,7 @@ function cxImportPreview(items, box, sourceName) {
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 alert(data.msg);
+                location.hash = "#tab-sync";   // 回到「同步」Tab，让导入结果可见
                 location.reload();
             })
             .catch(function () { msg.textContent = "导入失败，请重试"; });
@@ -466,6 +526,7 @@ if (emailForm) {
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                switchSettingsTab("email");   // 防御：确保消息所在的面板可见
                 msg.textContent = data.ok ? (data.msg || "✅ 已保存") : "保存失败";
             })
             .catch(function () { msg.textContent = "❌ 网络错误，保存失败"; });
@@ -481,6 +542,7 @@ if (emailTestBtn) {
         fetch("/api/email/test", { method: "POST" })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                switchSettingsTab("email");   // 防御：确保消息所在的面板可见
                 msg.textContent = data.msg || (data.ok ? "✅ 已发送" : "发送失败");
             })
             .catch(function () { msg.textContent = "❌ 网络错误，发送失败"; });
@@ -491,6 +553,7 @@ var crawlSyncBtn = document.getElementById("crawl-sync-btn");
 if (crawlSyncBtn) {
     crawlSyncBtn.addEventListener("click", function () {
         var msg = document.getElementById("crawl-msg");
+        switchSettingsTab("sync");   // 防御：同步按钮在「同步」Tab 里
         msg.textContent = "同步中…";
         fetch("/api/crawler/sync", { method: "POST" })
             .then(function (r) { return r.json(); })
@@ -515,7 +578,7 @@ if (logoutBtn) {
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 msg.textContent = data.ok ? "✅ " + data.msg : "退出失败";
-                setTimeout(function () { location.reload(); }, 1200);   // 刷新回到初始状态
+                setTimeout(function () { location.hash = "#tab-sync"; location.reload(); }, 1200);   // 刷新回到「同步」Tab
             });
     });
 }
@@ -529,6 +592,7 @@ if (crawlLogsBox) {
     if (latestStatus === "failed") {
         var needPaste = /校园网|VPN|验证码|半自动|认证服务器连不上|结构可能已变化/.test(latest);
         if (needPaste) {
+            switchSettingsTab("sync");   // 提示在「同步」Tab 里，先切过去再滚动
             var pasteCard = document.getElementById("crawl-paste-result");
             var hint = document.getElementById("crawl-paste-note");
             if (pasteCard) {
@@ -540,7 +604,10 @@ if (crawlLogsBox) {
                     '<p style="margin:4px 0 6px">③ 粘贴到下方输入框 → 点「提取 DDL」→ 勾选确认导入</p>' +
                     '</div>';
                 if (hint) {
-                    pasteCard.scrollIntoView({ behavior: "smooth", block: "center" });
+                    // 面板刚显示（display:none 时滚动是 no-op），等一帧再滚动
+                    setTimeout(function () {
+                        pasteCard.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }, 60);
                 }
             }
         }
@@ -570,6 +637,7 @@ function checkCrawlerCaptcha(msg) {
 }
 
 function showCaptchaDialog(imageBase64, msg) {
+    switchSettingsTab("sync");   // 验证码输入框在「同步」Tab 里，用户在其他 Tab 时先切过来
     if (captchaPollTimer) clearTimeout(captchaPollTimer);
     var box = document.getElementById("crawl-paste-result");   // 复用页面上已有的结果区
     box.innerHTML =
