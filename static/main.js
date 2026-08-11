@@ -389,18 +389,28 @@ function cxImportPreview(items, box, sourceName) {
     });
 }
 
-// 单一轮询（2 秒一次）：状态变化才重绘，避免按钮被重建丢掉
-if (cxArea) {
-    setInterval(function () {
+// 轮询学习通状态（智能间隔）：状态变化才重绘，避免按钮被重建丢掉
+// 未登录等待扫码 / 同步抓取中 → 2 秒快轮询（要实时感知扫码成功和抓取进度）
+// 已登录且同步空闲 → 30 秒慢轮询（状态基本不变，别刷屏）
+var cxLastLoggedIn = false;
+var cxLastSyncState = "idle";
+var cxPollTimer = null;
+function cxPoll() {
+    var wait = (cxLastLoggedIn && cxLastSyncState !== "running") ? 30000 : 2000;
+    cxPollTimer = setTimeout(function () {
         fetch("/api/crawler/chaoxing/status")
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                cxLastLoggedIn = data.logged_in;
+                cxLastSyncState = data.sync ? data.sync.state : "idle";
                 cxRender(data);
                 cxRenderSync(data.sync);
             })
-            .catch(function () {});
-    }, 2000);
+            .catch(function () {})
+            .finally(function () { cxPoll(); });   // 无论成败都继续轮询
+    }, wait);
 }
+if (cxArea) cxPoll();
 
 // ============================================
 // 设置页：教务爬虫（保存账号 / 立即同步 / 半自动粘贴提取）【队友功能】
@@ -419,6 +429,61 @@ if (crawlerForm) {
             .then(function (data) {
                 msg.textContent = data.ok ? "✅ 已保存" : "保存失败";
             });
+    });
+}
+
+// 邮箱定时发送 iCal：保存设置（授权码留空 = 不变）
+var emailForm = document.getElementById("email-form");
+if (emailForm) {
+    // 频率切换：每周 → 显示周几多选；每 N 天 → 显示间隔输入
+    var emailFreq = document.getElementById("email-freq");
+    var weekdaysBox = document.getElementById("email-weekdays-box");
+    var intervalBox = document.getElementById("email-interval-box");
+    function toggleEmailFreq() {
+        if (!emailFreq) return;
+        var v = emailFreq.value;
+        if (weekdaysBox) weekdaysBox.hidden = v !== "weekly";
+        if (intervalBox) intervalBox.hidden = v !== "interval";
+    }
+    emailFreq.addEventListener("change", toggleEmailFreq);
+    toggleEmailFreq();  // 页面加载时按已保存的频率显示
+
+    emailForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var msg = document.getElementById("email-msg");
+        // 每周频率至少要勾一天
+        if (emailFreq.value === "weekly") {
+            var checked = emailForm.querySelectorAll("input[name=email_weekdays]:checked").length;
+            if (checked === 0) {
+                msg.textContent = "请至少勾选一周里的一天";
+                return;
+            }
+        }
+        msg.textContent = "保存中…";
+        fetch("/api/email/settings", {
+            method: "POST",
+            body: new URLSearchParams(new FormData(emailForm)),
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                msg.textContent = data.ok ? (data.msg || "✅ 已保存") : "保存失败";
+            })
+            .catch(function () { msg.textContent = "❌ 网络错误，保存失败"; });
+    });
+}
+
+// 立即发送一封测试邮件（用已保存的配置，先点「保存邮箱设置」再测）
+var emailTestBtn = document.getElementById("email-test-btn");
+if (emailTestBtn) {
+    emailTestBtn.addEventListener("click", function () {
+        var msg = document.getElementById("email-msg");
+        msg.textContent = "正在发送…";
+        fetch("/api/email/test", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                msg.textContent = data.msg || (data.ok ? "✅ 已发送" : "发送失败");
+            })
+            .catch(function () { msg.textContent = "❌ 网络错误，发送失败"; });
     });
 }
 

@@ -219,6 +219,14 @@ AGENT_MOCK = True
 # 主动提醒：每天几点检查当天 DDL 并生成通知（0-23 点）
 AGENT_CHECK_HOUR = 8
 
+# ---- 邮箱定时发送 iCal（2026-08-11）----
+# QQ 邮箱 SMTP 服务器（换 163 邮箱改 smtp.163.com，也可在设置页直接改）
+SMTP_HOST = "smtp.qq.com"
+# QQ/163 邮箱均用 465 端口 + SSL
+SMTP_PORT = 465
+# 默认每天早上 8 点发送（分钟固定 05 分，避开整点服务器高峰；可在设置页改小时）
+EMAIL_SEND_HOUR = 8
+
 # ---- 备份（阶段 7）----
 # 距上次备份超过这个小时数，启动时就自动备份一次
 BACKUP_INTERVAL_HOURS = 24

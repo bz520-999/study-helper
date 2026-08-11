@@ -56,6 +56,85 @@
     </p>
 </div>
 
+<!-- ==================== 邮箱定时发送 iCal ==================== -->
+<div class="card">
+    <h2>邮箱定时发送 DDL 日历</h2>
+    <p class="empty" style="margin-bottom: 12px">
+        每天定时把最新 DDL 的 <strong>study.ics 日历附件</strong>发到你邮箱，手机点开附件即可导入日历（免内网穿透，任何网络都能收）。
+        <br>发信记录显示在下方「同步日志」里。
+    </p>
+    <form id="email-form" class="upload-form">
+        <div class="form-grid">
+            <label>SMTP 服务器
+                <input name="email_smtp_host" value="{{ email_smtp_host }}" placeholder="smtp.qq.com">
+            </label>
+            <label>端口
+                <input name="email_smtp_port" value="{{ email_smtp_port }}" placeholder="465">
+            </label>
+            <label>发信邮箱
+                <input name="email_username" value="{{ email_username }}" placeholder="你的QQ号@qq.com">
+            </label>
+            <label>授权码（不是 QQ 密码！）
+                <input type="password" name="email_auth_code"
+                       placeholder="{{ '已保存（留空则不变）' if email_auth_set else 'QQ邮箱网页版：设置→账号→开启SMTP服务→生成授权码' }}">
+            </label>
+            <label>收件人（默认填自己，多个用逗号分隔）
+                <input name="email_to" value="{{ email_to }}" placeholder="你的QQ号@qq.com">
+            </label>
+            <label>抄送（选填，多个用逗号分隔）
+                <input name="email_cc" value="{{ email_cc }}" placeholder="想同时收到日历的同学/家人邮箱">
+            </label>
+            <label>发送时间
+                <span class="email-time-row">
+                    <select name="email_send_hour">
+                        {% for h in range(24) %}
+                        <option value="{{ h }}" {% if email_send_hour == h|string %}selected{% endif %}>{{ "%02d"|format(h) }}</option>
+                        {% endfor %}
+                    </select> 时
+                    <select name="email_send_minute">
+                        {% for m in range(0, 60, 5) %}
+                        <option value="{{ m }}" {% if email_send_minute == m|string %}selected{% endif %}>{{ "%02d"|format(m) }}</option>
+                        {% endfor %}
+                    </select> 分
+                </span>
+            </label>
+            <label>发送频率
+                <select name="email_freq" id="email-freq">
+                    <option value="daily" {% if email_freq == 'daily' %}selected{% endif %}>每天</option>
+                    <option value="weekly" {% if email_freq == 'weekly' %}selected{% endif %}>每周固定几天</option>
+                    <option value="interval" {% if email_freq == 'interval' %}selected{% endif %}>每 N 天</option>
+                </select>
+            </label>
+        </div>
+        <div id="email-weekdays-box" class="email-freq-box">
+            <span class="freq-label">每周哪几天发：</span>
+            {% for i in range(7) %}
+            <label class="checkbox-line freq-day">
+                <input type="checkbox" name="email_weekdays" value="{{ i }}"
+                       {% if i in email_weekdays_list %}checked{% endif %}>
+                {{ ['周一','周二','周三','周四','周五','周六','周日'][i] }}
+            </label>
+            {% endfor %}
+        </div>
+        <div id="email-interval-box" class="email-freq-box">
+            每 <input type="number" name="email_interval_days" min="1" max="30" value="{{ email_interval_days }}">
+            天发一次（比如 3 = 每 3 天）
+        </div>
+        <label class="checkbox-line">
+            <input type="checkbox" name="email_enabled" {% if email_enabled %}checked{% endif %}>
+            开启定时发送（关掉后仍可手动点「立即发送」）
+        </label>
+        <div>
+            <button type="submit" class="btn btn-primary">保存邮箱设置</button>
+            <button type="button" class="btn" id="email-test-btn">立即发送一封测试邮件</button>
+            <span id="email-msg" class="muted"></span>
+        </div>
+    </form>
+    <p class="file-meta" style="margin-top: 10px">
+        提示：QQ 邮箱需先在网页版「设置 → 账号 → 开启 POP3/SMTP 服务」生成<strong>授权码</strong>，把授权码填到上面（不是你的 QQ 登录密码）；授权码只保存在本机并加密存储。
+    </p>
+</div>
+
 <!-- ==================== 爬虫配置 ==================== -->
 <div class="card">
     <h2>学习通同步（作业/考试 DDL）</h2>

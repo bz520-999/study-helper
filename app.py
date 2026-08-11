@@ -10,6 +10,7 @@
 import datetime
 import json
 import os
+import smtplib
 import sys
 import threading
 import uuid
@@ -623,6 +624,19 @@ def settings_page():
         crawl_username=models.get_setting("crawl_username"),
         crawl_password_set=bool(models.get_setting("crawl_password")),
         crawl_logs=models.list_crawl_logs(),
+        # 邮件定时发送 iCal
+        email_smtp_host=models.get_setting("email_smtp_host") or config.SMTP_HOST,
+        email_smtp_port=models.get_setting("email_smtp_port") or str(config.SMTP_PORT),
+        email_username=models.get_setting("email_username"),
+        email_auth_set=bool(models.get_setting("email_auth_code")),
+        email_to=models.get_setting("email_to"),
+        email_cc=models.get_setting("email_cc"),
+        email_send_hour=models.get_setting("email_send_hour") or str(config.EMAIL_SEND_HOUR),
+        email_send_minute=models.get_setting("email_send_minute") or "0",
+        email_freq=models.get_setting("email_freq") or "daily",
+        email_weekdays_list=_parse_weekdays(models.get_setting("email_weekdays") or "0,1,2,3,4"),
+        email_interval_days=models.get_setting("email_interval_days") or "3",
+        email_enabled=models.get_setting("email_enabled") == "1",
         # 备份相关
         last_backup=backup.last_backup_time(),
         backup_count=len(backup._list_backups()),
@@ -721,6 +735,91 @@ def crawler_save():
         models.set_setting("crawl_password", security.encrypt_text(password))
     models.set_setting("crawl_enabled", "1" if enabled else "0")
     return {"ok": True}
+
+
+# ---- 邮箱定时发送 iCal（2026-08-11） ----
+def _parse_weekdays(text):
+    """'0,1,3' → [0,1,3]（0=周一，过滤非法值，去重保持顺序）"""
+    out = []
+    for part in (text or "").split(","):
+        if part.strip().isdigit() and 0 <= int(part.strip()) <= 6 and int(part.strip()) not in out:
+            out.append(int(part.strip()))
+    return out
+
+
+@app.route("/api/email/settings", methods=["POST"])
+def email_settings_save():
+    """保存邮箱配置（授权码加密存储，留空则不变）"""
+    host = request.form.get("email_smtp_host", "").strip()
+    port = request.form.get("email_smtp_port", "").strip()
+    username = request.form.get("email_username", "").strip()
+    auth_code = request.form.get("email_auth_code", "")
+    to_addr = request.form.get("email_to", "").strip()
+    cc_addr = request.form.get("email_cc", "").strip()
+    send_hour = request.form.get("email_send_hour", "").strip()
+    send_minute = request.form.get("email_send_minute", "").strip()
+    freq = request.form.get("email_freq", "").strip()
+    # ⚠️ 周几是多选 checkbox，必须用 getlist 收全部勾选项（get 只取第一个）
+    weekdays = _parse_weekdays(",".join(request.form.getlist("email_weekdays")))
+    interval_days = request.form.get("email_interval_days", "").strip()
+
+    if host:
+        models.set_setting("email_smtp_host", host)
+    if port and port.isdigit() and 0 < int(port) < 65536:
+        models.set_setting("email_smtp_port", port)
+    if username:
+        models.set_setting("email_username", username)
+    if auth_code:
+        # 加密后再存：数据库里是密文，页面永远不显示明文
+        models.set_setting("email_auth_code", security.encrypt_text(auth_code))
+    if to_addr:
+        models.set_setting("email_to", to_addr)
+    if cc_addr:
+        models.set_setting("email_cc", cc_addr)
+    # 发送时间：小时 0-23、分钟 0-59（照 agent_check_hour 的校验思路）
+    if send_hour.isdigit() and 0 <= int(send_hour) <= 23:
+        models.set_setting("email_send_hour", send_hour)
+    if send_minute.isdigit() and 0 <= int(send_minute) <= 59:
+        models.set_setting("email_send_minute", send_minute)
+    # 频率：daily / weekly / interval；周几 0-6 至少选一天；间隔 1-30 天
+    if freq in ("daily", "weekly", "interval"):
+        models.set_setting("email_freq", freq)
+    if weekdays:
+        models.set_setting("email_weekdays", ",".join(str(i) for i in weekdays))
+    if interval_days.isdigit() and 1 <= int(interval_days) <= 30:
+        models.set_setting("email_interval_days", interval_days)
+    models.set_setting(
+        "email_enabled", "1" if request.form.get("email_enabled") in ("1", "on", "true", "True") else "0"
+    )
+    # 立即按新时间/频率重排定时任务（不用重启应用）
+    scheduler.reload_email_job()
+    return {"ok": True, "msg": "已保存"}
+
+
+@app.route("/api/email/test", methods=["POST"])
+def email_test_send():
+    """立即发送一封测试邮件（评审演示/手动验证用），失败给友好中文提示"""
+    import email_sender  # 延迟导入，避免循环依赖
+
+    host = models.get_setting("email_smtp_host") or config.SMTP_HOST
+    port = models.get_setting("email_smtp_port") or str(config.SMTP_PORT)
+    sender = models.get_setting("email_username")
+    auth = security.decrypt_text(models.get_setting("email_auth_code"))
+    to_addrs = email_sender.parse_addresses(models.get_setting("email_to"))
+    cc_addrs = email_sender.parse_addresses(models.get_setting("email_cc"))
+
+    if not sender or not auth or not to_addrs:
+        return {"ok": False, "msg": "❌ 请先填好发信邮箱、授权码和收件人再点发送"}
+
+    try:
+        n = email_sender.send_ical_email(host, port, sender, auth, to_addrs, cc_addrs)
+        return {"ok": True, "msg": f"✅ 已发送到 {', '.join(to_addrs)}（含 {n} 条进行中任务），去邮箱查收吧"}
+    except smtplib.SMTPAuthenticationError:
+        return {"ok": False, "msg": "❌ 授权码错误（或没有开启 SMTP 服务），去 QQ 邮箱网页版检查一下"}
+    except (smtplib.SMTPException, OSError, ValueError) as e:
+        return {"ok": False, "msg": f"❌ 发送失败：连不上 SMTP 服务器或网络问题（{e}）"}
+    except Exception as e:
+        return {"ok": False, "msg": f"❌ 发送失败：{e}"}
 
 
 @app.route("/api/crawler/sync", methods=["POST"])

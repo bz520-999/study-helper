@@ -1187,6 +1187,43 @@ textarea:focus {
     100% { transform: rotateX(0deg); opacity: 1; }
 }
 
+/* ---------- 邮箱定时发送：时间 + 频率（设置页） ---------- */
+.email-time-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.email-time-row select {
+    width: auto;
+    min-width: 72px;
+}
+.email-freq-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+    padding: 8px 10px;
+    border-radius: var(--radius-control);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    font-size: 14px;
+}
+.email-freq-box .freq-label {
+    font-weight: 600;
+    margin-right: 2px;
+}
+.email-freq-box .freq-day {
+    margin: 0;
+}
+.email-freq-box input[type="number"] {
+    width: 64px;
+}
+.email-freq-box[hidden] {
+    display: none;
+}
+
 /* ---------- 同步日志折叠（设置页） ---------- */
 .crawl-more {
     margin-top: 8px;
