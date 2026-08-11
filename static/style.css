@@ -710,6 +710,7 @@ textarea:focus {
 }
 .schedule-toolbar .muted { font-weight: 600; font-size: 15px; min-width: 70px; text-align: center; }
 .schedule-wrap {
+    position: relative;    /* 供 DDL 覆盖层定位 */
     overflow-x: auto;
     max-width: 100%;
 }
@@ -936,4 +937,251 @@ textarea:focus {
     border: 1px dashed var(--primary);
     border-radius: var(--radius-control);
     cursor: text;
+/* ---------- 每日 DDL 清单（时间轴可视化） ---------- */
+.ddl-board {
+    background: var(--surface-2);
+    border-top: 2px solid var(--border, #e5e5e0);   /* 窄窄的分割框，与课表隔开 */
+    overflow: hidden;
+}
+.ddl-board-header {
+    display: flex;
+    border-bottom: 1px solid var(--border, #e5e5e0);
+    background: var(--surface-2, #f7f7f4);
+}
+.ddl-day-col-header {
+    flex: 1;
+    text-align: center;
+    padding: 8px 2px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text, #333);
+    border-left: 1px solid var(--border, #e5e5e0);
+    min-width: 0;
+}
+.ddl-vert-title {
+    /* 占位列（不显示文字），宽度对齐课表左侧节次列 */
+    flex: 0 0 56px;
+    background: var(--surface-2, #f7f7f4);
+    border-left: none;
+}
+.ddl-board-body {
+    display: flex;
+    position: relative;
+    overflow-x: auto;
+}
+/* 左侧时间轴：只标 8:00/12:00/18:00，宽度对齐课表节次列(56px) */
+.ddl-time-ruler {
+    flex: 0 0 56px;
+    position: relative;
+    background: var(--surface-2, #f7f7f4);
+    border-right: 1px solid var(--border, #e5e5e0);
+}
+.ddl-time-label {
+    position: absolute;
+    right: 6px;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: var(--muted, #888);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.ddl-day-col {
+    flex: 1;
+    position: relative;
+    border-left: 1px solid var(--border, #e5e5e0);
+    min-width: 90px;
+}
+/* 小横杠（DDL 截止时刻） */
+.ddl-bar {
+    position: absolute;
+    left: 3%;
+    right: 3%;
+    height: 20px;
+    transform: translateY(-50%);
+    border-radius: 3px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 20px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    z-index: 3;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.ddl-bar:hover { filter: brightness(1.1); }
+/* 拖尾（向上渐隐 + 动态流动） */
+.ddl-trail {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    border-radius: 3px 3px 0 0;
+    opacity: 0.18;
+    cursor: pointer;
+    z-index: 2;
+    pointer-events: auto;
+    /* 动态流动：让渐隐从下往上 "流" */
+    background-image: linear-gradient(
+        to top,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.5) 50%,
+        rgba(255,255,255,0) 100%
+    );
+    background-size: 100% 120%;
+    background-position: 0 0;
+    animation: ddlFlow 2.2s linear infinite;
+}
+@keyframes ddlFlow {
+    0%   { background-position: 0 0; }
+    100% { background-position: 0 120%; }
+}
+/* 详情弹窗 */
+.ddl-detail-mask {
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ddl-detail-box {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 22px 26px;
+    max-width: 340px;
+    width: 90%;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+}
+.ddl-detail-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--ink);
+}
+.ddl-detail-row {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+/* ---------- 单天 DDL 视图（点击日期翻出） ---------- */
+/* 课表日期/星期行可点击 + 选中高亮 */
+#sched-date-row th[data-day], #sched-day-row th[data-day] {
+    cursor: pointer;
+    transition: background 0.2s;
+    user-select: none;
+}
+#sched-date-row th[data-day]:hover, #sched-day-row th[data-day]:hover {
+    background: var(--primary-light, #e8f0fe);
+}
+.sched-day-selected {
+    background: var(--primary, #2f6fed) !important;
+    color: #fff !important;
+}
+/* DDL 板标题（显示选中日期+星期） */
+.ddl-board-day-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text, #333);
+    padding: 8px;
+}
+
+/* ---------- 单天 DDL 翻牌卡 ---------- */
+.ddl-flip {
+    position: relative;
+    margin-top: 10px;
+    perspective: 1000px;
+}
+.ddl-flip-inner {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e5e5e0);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow-hover);
+    transform-style: preserve-3d;
+    transform-origin: top center;
+}
+.ddl-flip-anim {
+    animation: ddlFlipIn 0.5s ease;
+}
+@keyframes ddlFlipIn {
+    0%   { transform: rotateX(-90deg); opacity: 0.3; }
+    60%  { transform: rotateX(8deg); }
+    100% { transform: rotateX(0deg); opacity: 1; }
+}
+.ddl-board-day-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text, #333);
+    padding: 8px;
+    background: var(--surface-2, #f7f7f4);
+    border-bottom: 1px solid var(--border, #e5e5e0);
+}
+.ddl-board-body {
+    display: flex;
+    position: relative;
+    overflow: hidden;
+}
+
+/* ---------- DDL 覆盖层（点击日期盖住该列课程） ---------- */
+.ddl-overlay {
+    position: absolute;
+    background: var(--surface-2);   /* 近不透明，盖住课程 */
+    border: 2px solid #8e71b1;
+    border-radius: 8px;
+    z-index: 20;
+    overflow: hidden;
+    transform-origin: top center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+.ddl-overlay .ddl-bar {
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    height: 18px;
+    transform: translateY(-50%);
+    border-radius: 3px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    z-index: 3;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.ddl-overlay .ddl-trail {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    border-radius: 3px 3px 0 0;
+    opacity: 0.18;
+    cursor: pointer;
+    z-index: 2;
+    background-image: linear-gradient(
+        to top,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.5) 50%,
+        rgba(255,255,255,0) 100%
+    );
+    background-size: 100% 120%;
+    background-position: 0 0;
+    animation: ddlFlow 2.2s linear infinite;
+}
+.ddl-flip-anim {
+    animation: ddlOverlayIn 0.4s ease;
+}
+@keyframes ddlOverlayIn {
+    0%   { transform: rotateX(-90deg); opacity: 0.2; }
+    60%  { transform: rotateX(8deg); }
+    100% { transform: rotateX(0deg); opacity: 1; }
 }

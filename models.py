@@ -41,16 +41,17 @@ def list_courses():
 
 # ==================== DDL 任务 ====================
 
-def add_ddl(title, course_id, due_at, note="", remind_before_hours=24, source="manual"):
-    """新增一条 DDL。remind_before_hours：提前多少小时提醒（0=不提醒，默认提前 1 天）"""
+def add_ddl(title, course_id, due_at, note="", remind_before_hours=24, source="manual", is_quiz=0):
+    """新增一条 DDL。remind_before_hours：提前多少小时提醒（0=不提醒，默认提前 1 天）
+    is_quiz：是否课堂小测（1=勾选了，会映射到主表）"""
     try:
         hours = max(0, min(int(remind_before_hours or 0), 24 * 365))   # 兜底：非法值收进 0~8760
     except (TypeError, ValueError):
         hours = 24
     return db.execute(
-        "INSERT INTO ddl_tasks (title, course_id, due_at, note, remind_before_hours, source) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (title, course_id, due_at, note, hours, source),
+        "INSERT INTO ddl_tasks (title, course_id, due_at, note, remind_before_hours, source, is_quiz) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (title, course_id, due_at, note, hours, source, 1 if is_quiz else 0),
     )
 
 
@@ -138,7 +139,7 @@ def get_ddl(task_id):
 
 
 def update_ddl(task_id, title=None, course_id=None, due_at=None, note=None,
-               remind_before_hours=None):
+               remind_before_hours=None, is_quiz=None):
     """更新一条 DDL（只更新传入的非 None 字段）"""
     fields = {}
     if title is not None:
@@ -154,6 +155,8 @@ def update_ddl(task_id, title=None, course_id=None, due_at=None, note=None,
             fields["remind_before_hours"] = max(0, min(int(remind_before_hours), 24 * 365))
         except (TypeError, ValueError):
             fields["remind_before_hours"] = 24
+    if is_quiz is not None:
+        fields["is_quiz"] = 1 if is_quiz else 0
 
     if not fields:
         return

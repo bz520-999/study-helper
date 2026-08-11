@@ -52,6 +52,10 @@
                 <input type="number" name="remind_custom_hours" id="remind-custom" min="1" max="8760" placeholder="如 6">
             </label>
         </div>
+        <label class="checkbox-line" style="margin-top: 8px;">
+            <input type="checkbox" name="is_quiz" value="1"> 是否为课堂小测
+            <span class="muted" style="font-size: 12px; margin-left: 6px;">—— 勾选后此 DDL 会一起映射到首页主表（课表），主表除了显示教务处考试安排，也会显示你自己添加的课堂小测</span>
+        </label>
         <div>
             <button type="submit" class="btn btn-primary">保存</button>
         </div>
@@ -124,6 +128,10 @@
                     <input type="number" name="remind_custom_hours" id="edit-remind-custom" min="1" max="8760" placeholder="如 6">
                 </label>
             </div>
+            <label class="checkbox-line" style="margin-top: 8px;">
+                <input type="checkbox" name="is_quiz" id="edit-is-quiz" value="1"> 是否为课堂小测
+                <span class="muted" style="font-size: 12px; margin-left: 6px;">勾选后此 DDL 会映射到首页主表（课表）</span>
+            </label>
             <div class="modal-actions">
                 <span id="edit-msg" class="muted" style="flex:1"></span>
                 <button type="button" class="btn" id="edit-cancel">取消</button>
@@ -168,6 +176,8 @@ document.querySelectorAll('.btn-edit').forEach(function(btn) {
                 // datetime-local 需要 "YYYY-MM-DDTHH:MM" 格式
                 document.getElementById('edit-due').value = d.due_at.replace(' ', 'T');
                 document.getElementById('edit-note').value = d.note;
+                // 课堂小测回显
+                document.getElementById('edit-is-quiz').checked = !!d.is_quiz;
                 // 提醒时机回显：是固定档位就选中；不是（自定义值）就切到"自定义"并填回数值
                 var hours = d.remind_before_hours;
                 var editSel = document.getElementById('edit-remind');
